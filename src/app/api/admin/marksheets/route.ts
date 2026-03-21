@@ -10,9 +10,11 @@ export async function GET(req: Request) {
     const _forceRead = req.url // Force NextJS routing to view request
     const db = sql()
     const marksheets = await db`
-      SELECT 
-        m.id, m.serial_no, m.student_name, m.prn_no, m.examination, m.branch, m.session_name, 
+      SELECT
+        m.id, m.serial_no, m.student_name, m.prn_no, m.examination, m.branch, m.session_name,
         m.sgpi, m.cgpi, m.remarks, m.subjects, m.supabase_pdf_url, m.issued_at,
+        m.pdf_hash, m.data_hash, m.tx_hash_pdf, m.tx_hash_data,
+        m.certificate_id, m.certificate_url, m.verification_url,
         a.name as issued_by_name
       FROM marksheets m
       LEFT JOIN admin a ON m.issued_by = a.id

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 // @ts-ignore
 import Papa from 'papaparse'
@@ -9,6 +9,7 @@ import {
   FileText, UploadCloud, FileSignature, AlertCircle, Loader2, CheckCircle, Search, Plus, Trash2, History, Download 
 } from 'lucide-react'
 import AdminShell, { type AdminRecord } from '@/components/admin/AdminShell'
+import ProcessingTerminal, { type TerminalLog } from '@/components/admin/ProcessingTerminal'
 
 interface SubjectTarget {
   code: string
@@ -27,6 +28,29 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+
+  // Terminal processing state
+  const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([])
+  const [terminalActive, setTerminalActive] = useState(false)
+  const [terminalComplete, setTerminalComplete] = useState(false)
+  const [terminalCurrentIndex, setTerminalCurrentIndex] = useState(0)
+  const [terminalTotalCount, setTerminalTotalCount] = useState(0)
+  const [terminalSuccessCount, setTerminalSuccessCount] = useState(0)
+  const [terminalErrorCount, setTerminalErrorCount] = useState(0)
+
+  const addLog = useCallback((message: string, status: TerminalLog['status']) => {
+    setTerminalLogs(prev => [...prev, { id: Date.now() + Math.random(), message, status, timestamp: new Date() }])
+  }, [])
+
+  const resetTerminal = useCallback(() => {
+    setTerminalActive(false)
+    setTerminalComplete(false)
+    setTerminalLogs([])
+    setTerminalCurrentIndex(0)
+    setTerminalTotalCount(0)
+    setTerminalSuccessCount(0)
+    setTerminalErrorCount(0)
+  }, [])
 
   // Manual Form State
   const [formData, setFormData] = useState({
@@ -80,8 +104,8 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to issue marksheet')
-      
-      setSuccessLink(data.url)
+
+      setSuccessLink(data.marksheet?.url || data.certificate?.url || '')
       // Reset form on success
       setFormData({
         serial_no: '',
@@ -96,8 +120,8 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
         date: '',
         subjects: [{ code: '', title: '', credits: '', grade: '', gp: '', cpgp: '' }]
       })
-      if (activeTab === 'history') fetchHistory()
-      
+      fetchHistory() // Refresh history
+
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -150,78 +174,127 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
   async function processBulkRows(rows: any[]) {
     try {
       if (rows.length === 0) throw new Error('File is empty')
-      
+
+      // Filter out fully empty rows first to get an accurate count
+      const validRows = rows.filter(row => {
+        const sName = row.student_name?.toString().trim()
+        const sPrn = row.prn_no?.toString().trim()
+        return sName || sPrn
+      })
+
+      if (validRows.length === 0) throw new Error('No valid student rows found in the file.')
+
+      // Initialize terminal state
+      setTerminalActive(true)
+      setTerminalComplete(false)
+      setTerminalLogs([])
+      setTerminalCurrentIndex(0)
+      setTerminalTotalCount(validRows.length)
+      setTerminalSuccessCount(0)
+      setTerminalErrorCount(0)
+
+      // Small delay so the terminal renders before we start processing
+      await new Promise(r => setTimeout(r, 300))
+
+      addLog(`Starting bulk processing of ${validRows.length} student record${validRows.length !== 1 ? 's' : ''}…`, 'info')
+      addLog('Connecting to AuthBlock API…', 'info')
+      await new Promise(r => setTimeout(r, 400))
+      addLog('Connection established. Beginning certificate generation.', 'info')
+
       let successCount = 0
-      for (const row of rows) {
-          // Skip empty rows - if no name and no PRN, it's likely a blank row
-          const sName = row.student_name?.toString().trim()
-          const sPrn = row.prn_no?.toString().trim()
-          if (!sName && !sPrn) continue
+      let errorCount = 0
+
+      for (let idx = 0; idx < validRows.length; idx++) {
+        const row = validRows[idx]
+        const sName = row.student_name?.toString().trim()
+        const sPrn = row.prn_no?.toString().trim()
+        const rowLabel = `[${idx + 1}/${validRows.length}]`
+
+        setTerminalCurrentIndex(idx + 1)
+        addLog(`${rowLabel} Generating certificate for ${sName || 'Unknown'} (PRN: ${sPrn || 'N/A'})…`, 'processing')
           
-          try {
-            const subjects = []
-            for (let i = 1; i <= 20; i++) { // Max 20 subjects
-              if (row[`sub_${i}_code`] || row[`sub_${i}_title`]) {
-                const credits = row[`sub_${i}_credits`]?.toString() || ''
-                const gp = row[`sub_${i}_gp`]?.toString() || ''
-                const grade = row[`sub_${i}_grade`] || ''
-                
-                let cpgpObj = ''
-                if (grade === '--' || credits === '--') cpgpObj = '--'
-                else if (!isNaN(parseInt(credits)) && !isNaN(parseInt(gp))) {
-                  cpgpObj = (parseInt(credits) * parseInt(gp)).toString()
-                }
-
-                subjects.push({
-                  code: row[`sub_${i}_code`] || '',
-                  title: row[`sub_${i}_title`] || '',
-                  credits,
-                  grade,
-                  gp,
-                  cpgp: cpgpObj
-                })
+        try {
+          const subjects = []
+          for (let i = 1; i <= 20; i++) {
+            if (row[`sub_${i}_code`] || row[`sub_${i}_title`]) {
+              const credits = row[`sub_${i}_credits`]?.toString() || ''
+              const gp = row[`sub_${i}_gp`]?.toString() || ''
+              const grade = row[`sub_${i}_grade`] || ''
+              
+              let cpgpObj = ''
+              if (grade === '--' || credits === '--') cpgpObj = '--'
+              else if (!isNaN(parseInt(credits)) && !isNaN(parseInt(gp))) {
+                cpgpObj = (parseInt(credits) * parseInt(gp)).toString()
               }
-            }
 
-            const payload = {
-                serial_no: row.serial_no || '',
-                student_name: sName,
-                prn_no: sPrn,
-                examination: row.examination || 'Bachelor of Engineering Sem-IV',
-                branch: row.branch || 'Computer Engineering',
-                session_name: row.session_name || 'June-2025',
-                sgpi: row.sgpi || '',
-                cgpi: row.cgpi || '',
-                remarks: row.remarks || 'SUCCESSFUL',
-                date: row.date || '30-06-2025',
-                subjects: subjects,
-                issued_by: currentUser.id
+              subjects.push({
+                code: row[`sub_${i}_code`] || '',
+                title: row[`sub_${i}_title`] || '',
+                credits,
+                grade,
+                gp,
+                cpgp: cpgpObj
+              })
             }
-
-            const res = await fetch('/api/admin/marksheets/issue', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            })
-            
-            if (res.ok) {
-              successCount++
-            } else {
-              console.error(`Failed to issue marksheet for ${sName || 'unknown'}`)
-            }
-          } catch (rowErr) {
-            console.error(`Error processing row for ${sName || 'unknown'}:`, rowErr)
           }
+
+          const payload = {
+            serial_no: row.serial_no || '',
+            student_name: sName,
+            prn_no: sPrn,
+            examination: row.examination || 'Bachelor of Engineering Sem-IV',
+            branch: row.branch || 'Computer Engineering',
+            session_name: row.session_name || 'June-2025',
+            sgpi: row.sgpi || '',
+            cgpi: row.cgpi || '',
+            remarks: row.remarks || 'SUCCESSFUL',
+            date: row.date || '30-06-2025',
+            subjects: subjects,
+            issued_by: currentUser.id
+          }
+
+          const res = await fetch('/api/admin/marksheets/issue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+
+          if (res.ok) {
+            successCount++
+            setTerminalSuccessCount(successCount)
+            addLog(`${rowLabel} ✓ Certificate issued for ${sName}`, 'success')
+          } else {
+            errorCount++
+            setTerminalErrorCount(errorCount)
+            const errData = await res.json().catch(() => ({}))
+            addLog(`${rowLabel} ✗ Failed for ${sName} — ${errData.error || 'Server error'}`, 'error')
+          }
+        } catch (rowErr: any) {
+          errorCount++
+          setTerminalErrorCount(errorCount)
+          addLog(`${rowLabel} ✗ Error for ${sName || 'unknown'} — ${rowErr.message || 'Unknown error'}`, 'error')
+        }
       }
-      
+
+      // Mark complete
+      setTerminalCurrentIndex(validRows.length)
+      setTerminalComplete(true)
+
       if (successCount > 0) {
-        setSuccessLink(`Successfully issued ${successCount} marksheets! View them all in the History tab.`)
-        if (activeTab === 'history') fetchHistory()
+        addLog(`\nBulk processing complete: ${successCount} succeeded, ${errorCount} failed.`, 'info')
+        setSuccessLink(`Successfully issued ${successCount} certificates! View them all in the History tab.`)
+        fetchHistory() // Refresh history
       } else {
-        throw new Error('No valid marksheets were issued.')
+        addLog('No valid certificates were issued.', 'error')
+        throw new Error('No valid certificates were issued.')
       }
     } catch (err: any) {
       setError(err.message)
+      if (!terminalActive) {
+        // Error happened before terminal was set up (e.g. empty file)
+      } else {
+        setTerminalComplete(true)
+      }
     } finally {
       setIsSubmitting(false)
     }
@@ -242,7 +315,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
     const ws = XLSX.utils.aoa_to_sheet(ws_data)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Template')
-    XLSX.writeFile(wb, 'Marksheet_Upload_Template.xlsx')
+    XLSX.writeFile(wb, 'Certificate_Upload_Template.xlsx')
   }
 
   // --- History ---
@@ -279,10 +352,10 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
         <div>
           <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
             <FileText className="w-8 h-8 text-blue-600" />
-            Issue Marksheets
+            Issue Certificates
           </h1>
           <p className="text-base text-slate-500 mt-2">
-            Generate verifiable PDF marksheets and anchor them securely.
+            Generate blockchain-verified certificates and store them securely.
           </p>
         </div>
       </motion.div>
@@ -488,6 +561,17 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
               </div>
             </form>
           ) : activeTab === 'bulk' ? (
+            terminalActive ? (
+              <ProcessingTerminal
+                logs={terminalLogs}
+                currentIndex={terminalCurrentIndex}
+                totalCount={terminalTotalCount}
+                isComplete={terminalComplete}
+                successCount={terminalSuccessCount}
+                errorCount={terminalErrorCount}
+                onReset={resetTerminal}
+              />
+            ) : (
             <div className="glass-card p-12 text-center rounded-3xl border-dashed">
               <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <FileText className="w-8 h-8 text-blue-500" />
@@ -515,57 +599,108 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                 Expected headers: <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-600">serial_no, student_name, prn_no, examination, ...</code> and <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-600">sub_1_code, sub_1_title, sub_1_credits</code>
               </div>
             </div>
+            )
           ) : activeTab === 'history' ? (
             <div className="glass-card overflow-hidden">
                <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                 <h2 className="font-bold text-slate-800">Issued Marksheets Vault</h2>
-                 <div className="relative">
-                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                   <input 
-                     type="text" 
-                     placeholder="Search PRN or Name..." 
-                     value={searchQuery}
-                     onChange={(e) => setSearchQuery(e.target.value)}
-                     className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-full sm:w-[250px]"
-                   />
+                 <h2 className="font-bold text-slate-800">Issued Marksheets</h2>
+                 <div className="flex gap-2">
+                   <div className="relative">
+                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                     <input
+                       type="text"
+                       placeholder="Search PRN, Name or Serial..."
+                       value={searchQuery}
+                       onChange={(e) => {
+                         setSearchQuery(e.target.value)
+                         if (e.target.value) fetchHistory()
+                       }}
+                       className="pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 w-full sm:w-[280px]"
+                     />
+                   </div>
+                   <button
+                     onClick={fetchHistory}
+                     disabled={loadingHistory}
+                     className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold text-sm transition disabled:opacity-50"
+                   >
+                     {loadingHistory ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Refresh'}
+                   </button>
                  </div>
                </div>
-               
+
                <div className="overflow-x-auto min-h-[400px]">
                  <table className="w-full text-left text-sm">
                    <thead className="bg-white border-b border-slate-200">
                      <tr>
+                       <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Serial No.</th>
                        <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Student & PRN</th>
                        <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Performance</th>
                        <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider">Date Issued</th>
-                       <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider text-right">PDF File</th>
+                       <th className="px-6 py-4 font-bold text-slate-600 text-xs uppercase tracking-wider text-right">Actions</th>
                      </tr>
                    </thead>
                    <tbody className="divide-y divide-slate-100 bg-white">
                      {loadingHistory ? (
-                       <tr><td colSpan={4} className="p-8 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500 mb-2" /> Syncing vault...</td></tr>
+                       <tr><td colSpan={5} className="p-8 text-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin mx-auto text-blue-500 mb-2" /> Loading marksheets...</td></tr>
                      ) : history.length === 0 ? (
-                       <tr><td colSpan={4} className="p-8 text-center text-slate-500 border border-dashed rounded-xl m-4">No marksheets have been issued yet.</td></tr>
+                       <tr><td colSpan={5} className="p-8 text-center text-slate-500 border border-dashed rounded-xl m-4">No marksheets have been issued yet.</td></tr>
                      ) : (
-                       history.filter(m => m.student_name.toLowerCase().includes(searchQuery.toLowerCase()) || m.prn_no.includes(searchQuery)).map(m => (
+                       history.filter(m =>
+                         m.student_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         m.prn_no?.includes(searchQuery) ||
+                         m.serial_no?.toLowerCase().includes(searchQuery.toLowerCase())
+                       ).map(m => (
                          <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
+                           <td className="px-6 py-4">
+                             <div className="font-mono text-xs text-blue-600 font-bold">{m.serial_no || 'N/A'}</div>
+                             <div className="text-[10px] text-slate-400 mt-0.5">
+                               {m.branch || 'N/A'}
+                             </div>
+                           </td>
                            <td className="px-6 py-4">
                              <div className="font-bold text-slate-900">{m.student_name}</div>
                              <div className="font-mono text-xs text-slate-500 mt-0.5">{m.prn_no}</div>
                            </td>
                            <td className="px-6 py-4">
                              <div className="flex gap-2 text-xs">
-                               <span className="font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded">SGPI: {m.sgpi}</span>
-                               <span className="font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded">CGPI: {m.cgpi}</span>
+                               <span className="font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded">SGPI: {m.sgpi || '-'}</span>
+                               <span className="font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded">CGPI: {m.cgpi || '-'}</span>
                              </div>
+                             <div className="text-[10px] text-slate-500 mt-1">{m.remarks || m.examination || ''}</div>
                            </td>
                            <td className="px-6 py-4 text-slate-600 text-xs font-medium">
-                             {new Date(m.issued_at).toLocaleDateString()}
+                             {m.issued_at ? new Date(m.issued_at).toLocaleDateString('en-IN', {
+                               day: 'numeric',
+                               month: 'short',
+                               year: 'numeric'
+                             }) : 'N/A'}
                            </td>
                            <td className="px-6 py-4 text-right">
-                             <a href={m.supabase_pdf_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg text-xs font-bold transition-colors border border-blue-100 hover:border-blue-600">
-                               <FileText className="w-3.5 h-3.5" /> Open PDF
-                             </a>
+                             <div className="flex items-center gap-2 justify-end flex-wrap">
+                               {m.supabase_pdf_url && (
+                                 <a
+                                   href={m.supabase_pdf_url}
+                                   target="_blank"
+                                   rel="noreferrer"
+                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg text-xs font-bold transition-colors border border-blue-100 hover:border-blue-600"
+                                 >
+                                   <FileText className="w-3.5 h-3.5" /> Marksheet
+                                 </a>
+                               )}
+                               {m.certificate_url && (
+                                 <a
+                                   href={m.certificate_url}
+                                   target="_blank"
+                                   rel="noreferrer"
+                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-lg text-xs font-bold transition-colors border border-purple-100 hover:border-purple-600"
+                                 >
+                                   <Download className="w-3.5 h-3.5" /> Certificate
+                                 </a>
+                               )}
+                               {!m.supabase_pdf_url && !m.certificate_url && (
+                                 <span className="text-xs text-slate-400">No PDFs</span>
+                               )}
+                             </div>
                            </td>
                          </tr>
                        ))
