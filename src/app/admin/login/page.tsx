@@ -31,43 +31,47 @@ export default function AdminLoginPage() {
     let signedInEmail = ''
     let signedInUid   = ''
 
-    try {
-      /* ── 1. Open Google popup ── */
-      const provider = new GoogleAuthProvider()
-      provider.addScope('email')
-      const cred = await signInWithPopup(auth, provider)
+      let signedInPhoto = ''
 
-      signedInEmail = cred.user.email ?? ''
-      signedInUid   = cred.user.uid
+      try {
+        /* ── 1. Open Google popup ── */
+        const provider = new GoogleAuthProvider()
+        provider.addScope('email')
+        const cred = await signInWithPopup(auth, provider)
 
-      /* ── 2. Check the signed-in email against the DB whitelist ── */
-      const res  = await fetch('/api/admin/check-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: signedInEmail.toLowerCase() }),
-      })
-      const data = await res.json()
+        signedInEmail = cred.user.email ?? ''
+        signedInUid   = cred.user.uid
+        signedInPhoto = cred.user.photoURL ?? ''
 
-      if (!data.allowed) {
-        /* Not whitelisted — delete the Firebase user entirely so it never
-           appears in the Firebase Console, then sign out locally. */
-        try { await cred.user.delete() } catch { /* ignore — best effort */ }
-        await auth.signOut()
-        setDeniedEmail(signedInEmail)
-        setStatus('denied')
-        return
-      }
+        /* ── 2. Check the signed-in email against the DB whitelist ── */
+        const res  = await fetch('/api/admin/check-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: signedInEmail.toLowerCase() }),
+        })
+        const data = await res.json()
 
-      /* ── 3. Whitelist passed — persist Firebase UID to DB ── */
-      await fetch('/api/admin/link-firebase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email:          signedInEmail.toLowerCase(),
-          firebase_uid:   signedInUid,
-          firebase_email: signedInEmail,
-        }),
-      })
+        if (!data.allowed) {
+          /* Not whitelisted — delete the Firebase user entirely so it never
+             appears in the Firebase Console, then sign out locally. */
+          try { await cred.user.delete() } catch { /* ignore — best effort */ }
+          await auth.signOut()
+          setDeniedEmail(signedInEmail)
+          setStatus('denied')
+          return
+        }
+
+        /* ── 3. Whitelist passed — persist Firebase UID to DB ── */
+        await fetch('/api/admin/link-firebase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email:              signedInEmail.toLowerCase(),
+            firebase_uid:       signedInUid,
+            firebase_email:     signedInEmail,
+            firebase_photo_url: signedInPhoto || null
+          }),
+        })
 
       /* ── 4. Redirect to dashboard ── */
       router.push('/admin/dashboard')

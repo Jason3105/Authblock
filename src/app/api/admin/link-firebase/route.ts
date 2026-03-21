@@ -3,7 +3,7 @@ import { sql } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   try {
-    const { email, firebase_uid, firebase_email } = await req.json()
+    const { email, firebase_uid, firebase_email, firebase_photo_url } = await req.json()
 
     if (!email || !firebase_uid) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -17,7 +17,8 @@ export async function POST(req: NextRequest) {
       UPDATE admin
       SET
         firebase_uid   = ${firebase_uid},
-        firebase_email = ${firebase_email ?? email}
+        firebase_email = ${firebase_email ?? email},
+        firebase_photo_url = ${firebase_photo_url ?? null}
       WHERE email = ${email.toLowerCase().trim()}
       RETURNING id, name, email, admin_type, position
     `
