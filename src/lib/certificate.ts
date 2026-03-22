@@ -163,7 +163,7 @@ export function formatCertificateForPrint(data: CertificateData): string {
   return `
 ╔════════════════════════════════════════════════════════════════╗
 ║              AUTHBLOCK VERIFICATION CERTIFICATE                ║
-║                   Government of Jharkhand                      ║
+║         Fr. Conceicao Rodrigues College of Engineering         ║
 ╠════════════════════════════════════════════════════════════════╣
 ║  Certificate ID: ${data.certificate_id}
 ║  Issue Date: ${new Date(data.issue_date).toLocaleDateString('en-IN')}

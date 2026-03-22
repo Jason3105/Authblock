@@ -9,12 +9,18 @@ import {
   CTA,
   Footer
 } from '@/components/landing'
+import { cookies } from 'next/headers'
 
 export default function LandingPage() {
+  const cookieStore = cookies()
+  const sessionCookie = cookieStore.get('student_session')
+  const isLoggedIn = !!sessionCookie
+  const user = sessionCookie ? JSON.parse(sessionCookie.value) : null
+
   return (
     <main className="min-h-screen bg-white">
-      <Navbar />
-      <Hero />
+      <Navbar isLoggedIn={isLoggedIn} user={user} />
+      <Hero isLoggedIn={isLoggedIn} />
 
       {/* Scrolling ticker */}
       <TickerBar />
@@ -35,7 +41,7 @@ export default function LandingPage() {
       <Stakeholders />
 
       {/* CTA */}
-      <CTA />
+      <CTA isLoggedIn={isLoggedIn} />
 
       {/* Footer */}
       <Footer />

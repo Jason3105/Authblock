@@ -141,13 +141,14 @@ export async function POST(req: Request) {
     // ============================================================
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
     const verificationUrl = `${baseUrl}/verify?cert=${certificateData.certificate_id}&hash=${certDataHash}&tx=${tx_hash_data}`
+    const qrScanUrl = `${baseUrl}/verify?cert=${certificateData.certificate_id}`
     certificateData.verification_url = verificationUrl
     certificateData.blockchain_hash = certDataHash
     console.log('[Certificate] Verification URL created')
 
     // Generate QR Code
-    const qrBuffer = await QRCode.toBuffer(verificationUrl, {
-      errorCorrectionLevel: 'H',
+    const qrBuffer = await QRCode.toBuffer(qrScanUrl, {
+      errorCorrectionLevel: 'L',
       type: 'png',
       width: 300,
       margin: 2
@@ -155,71 +156,186 @@ export async function POST(req: Request) {
 
     // ============================================================
     // PART 5: GENERATE CERTIFICATE PDF WITH QR CODE
+    // A4 Portrait — White Background — Black Bold Text (OCR-Optimised)
     // ============================================================
     const certPdfDoc = await PDFDocument.create()
-    const certPage = certPdfDoc.addPage([842, 595]) // A4 landscape
+    // A4 portrait: 595.28 × 841.89 pt
+    const certPage = certPdfDoc.addPage([595.28, 841.89])
+    const cw = 595.28  // canvas width
+    const ch = 841.89  // canvas height
 
     const fontBold = await certPdfDoc.embedFont(StandardFonts.HelveticaBold)
-    const fontReg = await certPdfDoc.embedFont(StandardFonts.Helvetica)
-    const qrImage = await certPdfDoc.embedPng(qrBuffer)
+    const fontReg  = await certPdfDoc.embedFont(StandardFonts.Helvetica)
+    const qrImage  = await certPdfDoc.embedPng(qrBuffer)
 
-    // Background
-    certPage.drawRectangle({ x: 0, y: 0, width: 842, height: 595, color: rgb(0.06, 0.09, 0.18) })
+    const BLACK   = rgb(0,    0,    0)
+    const DARK    = rgb(0.13, 0.13, 0.13)
+    const LGREY   = rgb(0.35, 0.35, 0.35)
+    const BLUE    = rgb(0.11, 0.30, 0.87)
+    const WHITE   = rgb(1,    1,    1)
+    const GREEN   = rgb(0.05, 0.50, 0.15)
+    const RED     = rgb(0.70, 0.05, 0.05)
 
-    // Header bar
-    certPage.drawRectangle({ x: 0, y: 545, width: 842, height: 50, color: rgb(0.25, 0.53, 0.96) })
+    // ── White background ──
+    certPage.drawRectangle({ x: 0, y: 0, width: cw, height: ch, color: WHITE })
 
-    // Title
-    certPage.drawText('AUTHBLOCK', { x: 320, y: 560, size: 28, font: fontBold, color: rgb(1, 1, 1) })
-    certPage.drawText('BLOCKCHAIN VERIFICATION CERTIFICATE', { x: 240, y: 520, size: 14, font: fontBold, color: rgb(0.8, 0.85, 0.9) })
-    certPage.drawText('Government of Jharkhand', { x: 330, y: 500, size: 10, font: fontReg, color: rgb(0.6, 0.7, 0.8) })
-    certPage.drawText(`Certificate ID: ${certificateData.certificate_id}`, { x: 300, y: 475, size: 9, font: fontReg, color: rgb(0.4, 0.6, 0.9) })
+    // ── Top accent bar (blue) ──
+    certPage.drawRectangle({ x: 0, y: ch - 10, width: cw, height: 10, color: BLUE })
 
-    // Student Information
-    let yPos = 440
-    certPage.drawText('STUDENT INFORMATION', { x: 60, y: yPos, size: 12, font: fontBold, color: rgb(0.4, 0.6, 0.9) })
-    yPos -= 25
-    certPage.drawText(`Name: ${certificateData.name}`, { x: 60, y: yPos, size: 11, font: fontReg, color: rgb(0.9, 0.9, 0.9) })
+    // ── Header section ──────────────────────────────────────────
+    const headerY = ch - 55
+    certPage.drawText('AUTHBLOCK', {
+      x: 40, y: headerY + 12,
+      size: 28, font: fontBold, color: BLUE
+    })
+    certPage.drawText('Blockchain Certification Authority · Fr. Conceicao Rodrigues College of Engineering', {
+      x: 40, y: headerY - 6,
+      size: 9, font: fontReg, color: LGREY
+    })
+
+
+    // ── Divider ──────────────────────────────────────────────────
+    certPage.drawRectangle({ x: 40, y: ch - 80, width: cw - 80, height: 1.5, color: BLUE })
+
+    // ── Certificate title ─────────────────────────────────────
+    certPage.drawText('BLOCKCHAIN VERIFICATION CERTIFICATE', {
+      x: 40, y: ch - 102,
+      size: 15, font: fontBold, color: BLACK
+    })
+    certPage.drawText('Academic Performance Record — Cryptographically Secured on Ethereum', {
+      x: 40, y: ch - 120,
+      size: 9, font: fontReg, color: LGREY
+    })
+
+    // ── Certificate ID band ───────────────────────────────────
+    certPage.drawRectangle({ x: 40, y: ch - 152, width: cw - 80, height: 22, color: rgb(0.95, 0.97, 1) })
+    certPage.drawRectangle({ x: 40, y: ch - 152, width: cw - 80, height: 22,
+      borderColor: rgb(0.80, 0.88, 1), borderWidth: 0.8
+    })
+    certPage.drawText('Certificate ID:', {
+      x: 48, y: ch - 145,
+      size: 9, font: fontBold, color: BLUE
+    })
+    certPage.drawText(certificateData.certificate_id, {
+      x: 118, y: ch - 145,
+      size: 9, font: fontBold, color: BLACK
+    })
+
+    // ── SECTION: Student Information ──────────────────────────
+    let yPos = ch - 183
+    certPage.drawText('STUDENT INFORMATION', {
+      x: 40, y: yPos,
+      size: 11, font: fontBold, color: BLUE
+    })
+    certPage.drawRectangle({ x: 40, y: yPos - 4, width: cw - 80, height: 0.8, color: rgb(0.85, 0.90, 1) })
+    yPos -= 22
+
+    // Row 1: Name + Serial side-by-side
+    certPage.drawText('Full Name', { x: 40, y: yPos, size: 8, font: fontReg, color: LGREY })
+    certPage.drawText('Serial No.', { x: 310, y: yPos, size: 8, font: fontReg, color: LGREY })
+    yPos -= 13
+    certPage.drawText(certificateData.name, { x: 40, y: yPos, size: 13, font: fontBold, color: BLACK })
+    certPage.drawText(certificateData.serial_no || '—', { x: 310, y: yPos, size: 13, font: fontBold, color: BLACK })
+    yPos -= 22
+
+    // Row 2: PRN + Branch
+    certPage.drawText('PRN Number', { x: 40, y: yPos, size: 8, font: fontReg, color: LGREY })
+    certPage.drawText('Branch / Programme', { x: 310, y: yPos, size: 8, font: fontReg, color: LGREY })
+    yPos -= 13
+    certPage.drawText(certificateData.prn_no, { x: 40, y: yPos, size: 13, font: fontBold, color: BLACK })
+    certPage.drawText(certificateData.branch, { x: 310, y: yPos, size: 13, font: fontBold, color: BLACK })
+    yPos -= 28
+
+    // ── SECTION: Academic Details ─────────────────────────────
+    certPage.drawText('ACADEMIC DETAILS', {
+      x: 40, y: yPos,
+      size: 11, font: fontBold, color: BLUE
+    })
+    certPage.drawRectangle({ x: 40, y: yPos - 4, width: cw - 80, height: 0.8, color: rgb(0.85, 0.90, 1) })
+    yPos -= 22
+
+    // Row 1: Examination + Session
+    certPage.drawText('Examination', { x: 40, y: yPos, size: 8, font: fontReg, color: LGREY })
+    certPage.drawText('Session', { x: 310, y: yPos, size: 8, font: fontReg, color: LGREY })
+    yPos -= 13
+    certPage.drawText(certificateData.examination, { x: 40, y: yPos, size: 12, font: fontBold, color: BLACK })
+    certPage.drawText(certificateData.session, { x: 310, y: yPos, size: 12, font: fontBold, color: BLACK })
+    yPos -= 28
+
+    // Row 2: SGPI | CGPI | Result — large, prominent
+    certPage.drawText('SGPI', { x: 40,  y: yPos, size: 9, font: fontBold, color: LGREY })
+    certPage.drawText('CGPI', { x: 160, y: yPos, size: 9, font: fontBold, color: LGREY })
+    certPage.drawText('Remark', { x: 310, y: yPos, size: 9, font: fontBold, color: LGREY })
+    yPos -= 18
+    certPage.drawText(certificateData.sgpi || '—', { x: 40,  y: yPos, size: 22, font: fontBold, color: BLUE })
+    certPage.drawText(certificateData.cgpi || '—', { x: 160, y: yPos, size: 22, font: fontBold, color: BLUE })
+    const isPass = certificateData.remarks.toUpperCase().includes('PASS') || certificateData.remarks.toUpperCase().includes('SUCCESS')
+    certPage.drawText(certificateData.remarks, { x: 310, y: yPos, size: 16, font: fontBold, color: isPass ? GREEN : RED })
+    yPos -= 30
+
+    // Row 3: Totals (compact)
+    certPage.drawText(`Total Credits: ${totalCredits}   Total GP: ${totalGp}   Total CP: ${totalCp}   Total CPGP: ${totalCpGp}`, {
+      x: 40, y: yPos, size: 10, font: fontReg, color: DARK
+    })
+    yPos -= 30
+
+    // ── SECTION: Blockchain Verification ─────────────────────
+    certPage.drawText('BLOCKCHAIN VERIFICATION', {
+      x: 40, y: yPos,
+      size: 11, font: fontBold, color: BLUE
+    })
+    certPage.drawRectangle({ x: 40, y: yPos - 4, width: cw - 80, height: 0.8, color: rgb(0.85, 0.90, 1) })
+    yPos -= 22
+
+    certPage.drawText('Issue Date', { x: 40, y: yPos, size: 8, font: fontReg, color: LGREY })
+    yPos -= 13
+    certPage.drawText(new Date(certificateData.issue_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }), {
+      x: 40, y: yPos, size: 12, font: fontBold, color: BLACK
+    })
+    yPos -= 22
+
+    certPage.drawText('Data Hash (SHA-256)', { x: 40, y: yPos, size: 8, font: fontReg, color: LGREY })
+    yPos -= 13
+    certPage.drawText(certDataHash, { x: 40, y: yPos, size: 8, font: fontReg, color: DARK })
+    yPos -= 18
+
+    certPage.drawText('Transaction Hash', { x: 40, y: yPos, size: 8, font: fontReg, color: LGREY })
+    yPos -= 13
+    certPage.drawText(tx_hash_data, { x: 40, y: yPos, size: 8, font: fontReg, color: DARK })
     yPos -= 20
-    certPage.drawText(`PRN: ${certificateData.prn_no}`, { x: 60, y: yPos, size: 10, font: fontReg, color: rgb(0.8, 0.8, 0.8) })
-    if (certificateData.serial_no) {
-      certPage.drawText(`Serial: ${certificateData.serial_no}`, { x: 350, y: yPos, size: 10, font: fontReg, color: rgb(0.8, 0.8, 0.8) })
-    }
-    yPos -= 20
-    certPage.drawText(`Branch: ${certificateData.branch}`, { x: 60, y: yPos, size: 10, font: fontReg, color: rgb(0.8, 0.8, 0.8) })
 
-    // Academic Details
-    yPos -= 35
-    certPage.drawText('ACADEMIC DETAILS', { x: 60, y: yPos, size: 12, font: fontBold, color: rgb(0.4, 0.6, 0.9) })
-    yPos -= 25
-    certPage.drawText(`Examination: ${certificateData.examination}`, { x: 60, y: yPos, size: 10, font: fontReg, color: rgb(0.8, 0.8, 0.8) })
-    yPos -= 20
-    certPage.drawText(`Session: ${certificateData.session}`, { x: 60, y: yPos, size: 10, font: fontReg, color: rgb(0.8, 0.8, 0.8) })
-    yPos -= 25
-    certPage.drawText(`SGPI: ${certificateData.sgpi}`, { x: 60, y: yPos, size: 14, font: fontBold, color: rgb(0.4, 0.9, 0.6) })
-    certPage.drawText(`CGPI: ${certificateData.cgpi}`, { x: 180, y: yPos, size: 14, font: fontBold, color: rgb(0.4, 0.9, 0.6) })
-    const remarkColor = certificateData.remarks.toUpperCase().includes('PASS') || certificateData.remarks.toUpperCase().includes('SUCCESS') ? rgb(0.4, 0.9, 0.6) : rgb(0.9, 0.4, 0.4)
-    certPage.drawText(`Result: ${certificateData.remarks}`, { x: 300, y: yPos, size: 12, font: fontBold, color: remarkColor })
+    certPage.drawText('[OK] Secured on Ethereum Blockchain (Sepolia)', {
+      x: 40, y: yPos, size: 10, font: fontBold, color: GREEN
+    })
 
-    // QR Code
-    certPage.drawImage(qrImage, { x: 630, y: 280, width: 150, height: 150 })
-    certPage.drawText('Scan to Verify', { x: 665, y: 265, size: 9, font: fontReg, color: rgb(0.6, 0.7, 0.8) })
+    // ── QR Code — bottom centre ───────────────────────────────
+    // QR sits in the gap between blockchain content (~y=298) and footer (y=46)
+    // Centre horizontally; draw label above and URL below
+    const qrSize = 110
+    const qrX = (cw - qrSize) / 2
+    const qrY = 58  // bottom of QR (pdf-lib y = bottom-left corner)
+    certPage.drawRectangle({ x: 40, y: yPos - 8, width: cw - 80, height: 0.8, color: rgb(0.85, 0.90, 1) })
+    certPage.drawText('SCAN TO VERIFY AUTHENTICITY', {
+      x: (cw - 140) / 2, y: qrY + qrSize + 10,
+      size: 9, font: fontBold, color: BLUE
+    })
+    certPage.drawImage(qrImage, { x: qrX, y: qrY, width: qrSize, height: qrSize })
+    certPage.drawText('Scan QR code to verify this certificate on the blockchain', {
+      x: (cw - 230) / 2, y: qrY - 12,
+      size: 8, font: fontReg, color: LGREY
+    })
 
-    // Blockchain Info
-    yPos = 150
-    certPage.drawText('BLOCKCHAIN VERIFICATION', { x: 60, y: yPos, size: 12, font: fontBold, color: rgb(0.4, 0.6, 0.9) })
-    yPos -= 25
-    certPage.drawText(`Issue Date: ${new Date(certificateData.issue_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}`, { x: 60, y: yPos, size: 9, font: fontReg, color: rgb(0.8, 0.8, 0.8) })
-    yPos -= 20
-    certPage.drawText(`Data Hash: ${certDataHash.substring(0, 40)}...`, { x: 60, y: yPos, size: 8, font: fontReg, color: rgb(0.4, 0.6, 0.9) })
-    yPos -= 15
-    certPage.drawText(`TX: ${tx_hash_data.substring(0, 40)}...`, { x: 60, y: yPos, size: 8, font: fontReg, color: rgb(0.6, 0.7, 0.8) })
-    yPos -= 20
-    certPage.drawText('* Secured on Ethereum Blockchain', { x: 60, y: yPos, size: 9, font: fontBold, color: rgb(0.4, 0.9, 0.6) })
+    // ── Footer ────────────────────────────────────────────────
+    certPage.drawRectangle({ x: 40, y: 30, width: cw - 80, height: 0.8, color: rgb(0.85, 0.90, 1) })
+    certPage.drawText('This is a digitally signed blockchain certificate issued by Authblock.', {
+      x: 40, y: 18, size: 7, font: fontReg, color: LGREY
+    })
+    certPage.drawText(`Verify at: ${baseUrl}/verify`, {
+      x: (cw - 100) / 2, y: 8, size: 7, font: fontReg, color: BLUE
+    })
 
-    // Footer
-    certPage.drawText(`Verify at: ${baseUrl}/verify`, { x: 320, y: 30, size: 8, font: fontReg, color: rgb(0.5, 0.6, 0.7) })
-    certPage.drawRectangle({ x: 0, y: 0, width: 842, height: 8, color: rgb(0.25, 0.53, 0.96) })
+    // ── Bottom accent bar ─────────────────────────────────────
+    certPage.drawRectangle({ x: 0, y: 0, width: cw, height: 6, color: BLUE })
 
     const certPdfBytes = await certPdfDoc.save()
     console.log('[Certificate] PDF generated, size:', certPdfBytes.length, 'bytes')
@@ -300,6 +416,15 @@ export async function POST(req: Request) {
 
     // @ts-ignore
     const db = sql()
+    
+    // Auto-register student if they don't exist yet
+    console.log('\n[Database] Auto-registering student in users table...')
+    await db`
+      INSERT INTO users (prn_no, full_name)
+      VALUES (${prn_no}, ${student_name})
+      ON CONFLICT (prn_no) DO NOTHING
+    `
+
     const result = await db`
       INSERT INTO marksheets (
         serial_no, student_name, prn_no, examination, branch, session_name, sgpi, cgpi, remarks, subjects,

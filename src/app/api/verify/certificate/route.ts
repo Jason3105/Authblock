@@ -73,11 +73,14 @@ export async function GET(request: NextRequest) {
 
     try {
       const { contract } = await getBlockchainContract()
-      const hashRecord = await contract.getHash(storedDataHash)
 
-      onBlockchain = hashRecord.timestamp > 0
-      blockchainTimestamp = hashRecord.timestamp > 0
-        ? new Date(Number(hashRecord.timestamp) * 1000).toISOString()
+      // The contract exposes verifyHash(bytes32) → (bool exists, uint256 timestamp)
+      // storedDataHash is already a 0x-prefixed 32-byte hex string
+      const [exists, timestamp] = await contract.verifyHash(storedDataHash)
+
+      onBlockchain = exists && Number(timestamp) > 0
+      blockchainTimestamp = onBlockchain
+        ? new Date(Number(timestamp) * 1000).toISOString()
         : null
 
       console.log('[Verify] Blockchain verification:', {

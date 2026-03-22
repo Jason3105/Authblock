@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
           ocrText = data.ParsedResults[0].ParsedText
           ocrProvider = 'ocrspace'
           console.log('[OCR API] OCR.space success! Text length:', ocrText.length)
-          console.log('[OCR API] Raw OCR text:\n' + ocrText.substring(0, 2000))
+          console.log('[OCR API] Raw OCR text (full):\n' + ocrText)
         } else if (data.OCRExitCode !== 1) {
           console.log('[OCR API] OCR.space exit code:', data.OCRExitCode)
           errorDetails += `OCR.space exit code: ${data.OCRExitCode}`
@@ -258,26 +258,35 @@ function parseCertificateText(text: string) {
 
   const certificate_id = certificateIdRaw ? normalizeCertificateId(certificateIdRaw) : ''
 
-  // Extract name - enhanced patterns for both formats
+  // Extract name - handle label-invisible OCR (gray labels wash out after grayscale+contrast)
   const nameRaw = extract([
-    // Authblock certificate format - avoid capturing "PRN" suffix and other keywords
+    // --- Authblock certificate ---
+    // When 'Full Name Serial No.' labels ARE visible in OCR:
+    /Full\s+Name\s+Serial\s+No\.\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)\s+SN-\d/i,
+    /Full\s+Name\s+(.+?)(?=\s+SN-|\s+\d{16})/i,
+    // When gray labels are INVISIBLE to OCR: name appears right after section header
+    // Text: '...STUDENT INFORMATION Rocky Johnson SN-0015 PRN...'
+    /STUDENT\s+INFORMATION\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+?)(?=\s+SN-|\s+\d{16}|\s+PRN\s+Number)/i,
+    // Name appears just before the serial number SN-XXXX
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+?)\s+SN-\d{3,}/i,
+    // --- Legacy marksheet ---
     /(?:Student\s+)?Name\s*:?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+PRN|\s+Certificate|\s+Serial|\s*$)/i,
-    /Name\s*:?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+PRN|\s+No\.|\s+Certificate|\s+ID|\s+Serial)/i,
-    // Traditional marksheet format
-    /Name\s*:?\s*([A-Z][A-Za-z\s]+?)(?=\s*PRN|Roll|Examination|Branch)/i,
-    /([A-Z][A-Z\s]+?)(?=\s*PRN|Roll)/i
+    /Name\s*:?\s*([A-Z][A-Za-z\s]+?)(?=\s*PRN|Roll|Examination|Branch)/i
   ])
 
   // Normalize common OCR errors in name field
   const normalizeName = (text: string): string => {
     return text
       // Fix common OCR character confusions
-      .replace(/\bRaina\b/gi, 'Raina')        // Ensure consistent case
-      .replace(/\bSamay\b/gi, 'Samay')        // Ensure consistent case
-      .replace(/\bArjun\b/gi, 'Arjun')        // Ensure consistent case
-      .replace(/\bSingh\b/gi, 'Singh')        // Ensure consistent case
+      .replace(/\bRaina\b/gi, 'Raina')
+      .replace(/\bSamay\b/gi, 'Samay')
+      .replace(/\bArjun\b/gi, 'Arjun')
+      .replace(/\bSingh\b/gi, 'Singh')
+      // Clean trailing OCR garbage (labels that washed out or got misread)
+      .replace(/\s+(?:PRN|Number|Num|Der|De|Branci|Branch|Sea|Serial|No|Id|Cert|Certificate|Program|Programme)[a-z]*$/i, '')
+      .replace(/\s+(?:PRN|Number|Num|Der|De|Branci|Branch|Sea|Serial|No|Id|Cert|Certificate|Program|Programme)[a-z]*$/i, '') // Run twice for compound labels
       // Remove extra spaces and clean up
-      .replace(/\s+/g, ' ')                   // Multiple spaces to single
+      .replace(/\s+/g, ' ')
       .trim()
   }
 
@@ -347,30 +356,63 @@ function parseCertificateText(text: string) {
 
   // Extract session - enhanced for various formats with tight boundaries
   const session = extract([
-    /Session\s*:?\s*([A-Z][a-z]+-\d{4})/i,  // e.g., June-2025
-    /([A-Z][a-z]+-\d{4})(?=\s+S[GC]PI)/i,  // Stop at SGPI/SCPI
-    /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*-?\s*\d{4}/i,
+    // NEW Authblock cert: 'Sem-V June-2025 SGPI' — session follows examination text
+    /Sem-[IVX]+\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{4})/i,
+    // Month-year right before SGPI label
+    /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{4})(?=\s+SGPI)/i,
+    // Standard 'Session: June-2025' format
+    /Session\s*:?\s*([A-Z][a-z]+-\d{4})/i,
+    // Month-year pair with HYPHEN strictly (prevents catching 'March 2026' from issue date)
+    /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{4})/i,
     /Semester\s*:?\s*([A-Z][a-z]+-\d{4})/i
   ])
 
-  // Extract SGPI/SGPA - handle typo SCPI in OCR
+  // Extract SGPI/SGPA
+  // NEW Authblock cert layout (post-normalization), labels row + values row:
+  //   '...SGPI CGPI Remark 9.20 9.10 SUCCESSFUL...'  (labels visible)
+  //   '...SGPI CGPI 9.20 9.10 SUCCESSFUL...'          (Remark label washed out)
+  //   '...9.20 9.10 SUCCESSFUL...'                     (all labels washed out)
   const sgpi = extract([
-    /S[GC]PI\s*:?\s*([\d.]+)/i,  // Handle both SGPI and SCPI
-    /S\.?G\.?P\.?I\.?\s*:?\s*([\d.]+)/i,
-    /S\.?C\.?P\.?I\.?\s*:?\s*([\d.]+)/i
+    // Labels + Remark visible:
+    /SGPI\s+CGPI\s+Remark\s+([\d.]+)/i,
+    // Remark label washed out:
+    /SGPI\s+CGPI\s+([\d.]+)/i,
+    // Direct: SGPI then value (even if on separate line after normalization):
+    /SGPI\s+([\d.]+)/i,
+    // No labels at all — first decimal in 'X.XX Y.YY SUCCESSFUL|PASS' pair:
+    /([\d]+\.[\d]+)\s+[\d]+\.[\d]+\s+(?:SUCCESSFUL|SUCCESS|PASS)/i,
+    // Standard colon-separated: 'SGPI: 9.20'
+    /S[GC]PI\s*:?\s*([\d.]+)/i,
+    /S\.?G\.?P\.?I\.?\s*:?\s*([\d.]+)/i
   ])
 
-  // Extract CGPI/CGPA - enhanced precision
+  // Extract CGPI/CGPA
   const cgpi = extract([
+    // Labels + Remark visible (skip SGPI value to get CGPI):
+    /SGPI\s+CGPI\s+Remark\s+[\d.]+\s+([\d.]+)/i,
+    // Remark label washed out:
+    /SGPI\s+CGPI\s+[\d.]+\s+([\d.]+)/i,
+    // Direct: CGPI then its value:
+    /CGPI\s+([\d.]+)/i,
+    // No labels at all — second decimal in 'X.XX Y.YY SUCCESSFUL|PASS' pair:
+    /[\d]+\.[\d]+\s+([\d]+\.[\d]+)\s+(?:SUCCESSFUL|SUCCESS|PASS)/i,
+    // Standard colon-separated: 'CGPI: 9.10'
     /CGPI\s*:?\s*([\d.]+(?:\.\d{2})?)/i,
     /CGPA\s*:?\s*([\d.]+(?:\.\d{2})?)/i,
     /C\.?G\.?P\.?I\.?\s*:?\s*([\d.]+)/i
   ])
 
-  // Extract remarks/result - enhanced patterns
+  // Extract remarks/result
+  // NEW Authblock cert: label is 'Remark' (no s), value appears two words later in flat text
+  // e.g. 'SGPI CGPI Remark 9.20 9.10 SUCCESSFUL'
   const remarksRaw = extract([
+    // Authblock: remark value is the word after SGPI+CGPI numeric values
+    /SGPI\s+CGPI\s+Remark\s+[\d.]+\s+[\d.]+\s+([A-Z][A-Za-z]+)/i,
+    // Standard label patterns
+    /Remark\s*:?\s*([A-Z][A-Za-z]+)/i,
     /Result\s*:?\s*([A-Z][A-Za-z]+)/i,
     /Remarks?\s*:?\s*([A-Z][A-Za-z]+)/i,
+    // Standalone keyword fallback
     /(SUCCESSFUL|SUCCESS|PASS|PASSED|FAIL|FAILED)/i,
     /Status\s*:?\s*([A-Z][A-Za-z]+)/i
   ])

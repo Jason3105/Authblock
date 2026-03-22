@@ -98,7 +98,7 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
             Certificate Verification
           </h1>
           <p className="text-slate-600 max-w-2xl mx-auto">
-            Blockchain-verified academic certificate from Government of Jharkhand
+            Blockchain-verified academic certificate from Fr. Conceicao Rodrigues College of Engineering
           </p>
         </motion.div>
 

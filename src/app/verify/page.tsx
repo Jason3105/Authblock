@@ -49,6 +49,8 @@ function DocumentVerification() {
   const [result, setResult] = useState<any>(null)
   const [extractedData, setExtractedData] = useState<any>(null)
   const [dragActive, setDragActive] = useState(false)
+  // Stores cert_id when an Authblock certificate has been successfully verified
+  const [verifiedCertId, setVerifiedCertId] = useState<string | null>(null)
 
   async function sha256(buffer: ArrayBuffer | Uint8Array) {
     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer as BufferSource)
@@ -78,6 +80,7 @@ function DocumentVerification() {
     setResult(null)
     setProcessStep('')
     setFile(null)
+    setVerifiedCertId(null)
   }
 
   // Standard A4 marksheet aspect ratio (width:height)
@@ -120,20 +123,33 @@ function DocumentVerification() {
     }
 
     // Find bounding box of document (white/light region)
+    // Use a tighter threshold: require pixels to be clearly brighter than the Otsu threshold
     let minX = width, maxX = 0, minY = height, maxY = 0
     const margin = Math.floor(Math.min(width, height) * 0.02) // 2% margin
+    const edgeThreshold = Math.min(threshold + 20, 220) // Tighter: only clearly bright doc pixels
 
     for (let y = margin; y < height - margin; y++) {
       for (let x = margin; x < width - margin; x++) {
         const idx = y * width + x
-        // Document pixels are typically lighter than background
-        if (gray[idx] > threshold - 30) {
+        // Document pixels are clearly brighter than background
+        if (gray[idx] > edgeThreshold) {
           if (x < minX) minX = x
           if (x > maxX) maxX = x
           if (y < minY) minY = y
           if (y > maxY) maxY = y
         }
       }
+    }
+
+    // Fallback: if detected region covers >92% of the image, detection failed
+    // (happens when doc is white-on-white or fills the entire camera frame)
+    // Use full image with a small inset instead
+    const coverageX = maxX - minX
+    const coverageY = maxY - minY
+    if (coverageX > width * 0.92 && coverageY > height * 0.92) {
+      const inset = Math.floor(Math.min(width, height) * 0.015)
+      minX = inset; minY = inset
+      maxX = width - inset; maxY = height - inset
     }
 
     // Add small padding
@@ -254,24 +270,71 @@ function DocumentVerification() {
       return matches.map(m => m.str.trim()).join(' ').trim() || ''
     }
 
-    setProcessStep('Extracting student details from coordinates...')
+    setProcessStep('Detecting document type...')
 
-    // Extract fields using PDF coordinate system (origin at bottom-left)
-    // These coordinates are based on standard marksheet layout
-    const serial_no = extractAtCoord(440, 685, 5, 120)
-    const name = extractLineFrom(150, 647, 3)
-    const examination = extractLineFrom(150, 630, 3)
-    const branch = extractLineFrom(150, 612, 3)
-    const session = extractLineFrom(150, 595, 3)
-    const prn_no = extractAtCoord(150, 580, 3, 150)
+    // ── Detect if this is the new Authblock Certificate or the legacy Marksheet ──
+    // The Authblock certificate has 'AUTHBLOCK' text near the top of the page
+    // Marksheet has the template image with text overlaid at different coords
+    const isAuthblockCert = items.some((item: any) =>
+      item.str && item.str.includes('AUTHBLOCK')
+    )
+
+    let name = '', prn_no = '', serial_no = '', examination = '', branch = ''
+    let session = '', sgpi = '', cgpi = '', remarks = '', certificate_id = ''
+
+    if (isAuthblockCert) {
+      setProcessStep('Extracting from Authblock Certificate format...')
+
+      // ── New A4 Portrait Certificate layout ────────────────────
+      // Coordinates based on pdf-lib drawing (origin = bottom-left):
+      //   A4 height = 841.89 pt
+      //   Student section starts at ch-183 = 658.89
+      //   yPos trace:
+      //     ch-183-22    = 636.89  ← Name/Serial labels
+      //     ch-183-22-13 = 623.89  ← Name (x=40) / Serial (x=310)
+      //     ch-183-22-13-22 = 601.89  ← PRN/Branch labels
+      //     ch-183-22-13-22-13 = 588.89  ← PRN (x=40) / Branch (x=310)
+      //     -28 = 560.89  ← ACADEMIC section header
+      //     -22 = 538.89  ← Exam/Session labels
+      //     -13 = 525.89  ← Exam (x=40) / Session (x=310)
+      //     -28 = 497.89  ← SGPI/CGPI/Remark labels
+      //     -18 = 479.89  ← SGPI (x=40) / CGPI (x=160) / Remarks (x=310)
+      //   Certificate ID at y = ch-145 = 696.89, x starts at 118
+
+      name          = extractAtCoord(40,  623, 6, 260)
+      serial_no     = extractAtCoord(310, 623, 6, 200)
+      prn_no        = extractAtCoord(40,  588, 6, 200)
+      branch        = extractAtCoord(310, 588, 6, 200)
+      examination   = extractAtCoord(40,  525, 6, 260)
+      session       = extractAtCoord(310, 525, 6, 200)
+      sgpi          = extractAtCoord(40,  479, 6, 100)
+      cgpi          = extractAtCoord(160, 479, 6, 100)
+      remarks       = extractAtCoord(310, 479, 6, 200)
+      certificate_id= extractAtCoord(118, 696, 6, 300)
+
+      // Strip the '—' placeholder that was written when field was empty
+      serial_no = serial_no === '—' ? '' : serial_no
+
+      console.log('[Verify] Authblock cert fields:', { name, prn_no, serial_no, examination, branch, session, sgpi, cgpi, remarks, certificate_id })
+
+    } else {
+      setProcessStep('Extracting from Marksheet template format...')
+
+      // ── Legacy Marksheet layout (template overlay coords) ─────
+      serial_no   = extractAtCoord(440, 685, 5, 120)
+      name        = extractLineFrom(150, 647, 3)
+      examination = extractLineFrom(150, 630, 3)
+      branch      = extractLineFrom(150, 612, 3)
+      session     = extractLineFrom(150, 595, 3)
+      prn_no      = extractAtCoord(150, 580, 3, 150)
+      remarks     = extractAtCoord(130, 118, 5, 100)
+      sgpi        = extractAtCoord(277, 118, 5, 50)
+      cgpi        = extractAtCoord(335, 118, 5, 50)
+
+      console.log('[Verify] Marksheet fields:', { name, prn_no, serial_no, examination, branch, session, sgpi, cgpi, remarks })
+    }
 
     setProcessStep('Extracting performance metrics...')
-
-    // Result row
-    const remarks = extractAtCoord(130, 118, 5, 100)
-    const sgpi = extractAtCoord(277, 118, 5, 50)
-    const cgpi = extractAtCoord(335, 118, 5, 50)
-    const date = extractAtCoord(130, 100, 5, 120)
 
     // Check if we got meaningful data
     const hasData = name || prn_no || serial_no
@@ -283,16 +346,16 @@ function DocumentVerification() {
 
     // Automatically proceed to hash generation without user input
     const certificateDataForHashing = {
-      name: name || '',
-      prn_no: prn_no || '',
-      serial_no: serial_no || '',
-      examination: examination || '',
-      branch: branch || '',
-      session: session || '',
-      sgpi: sgpi || '',
-      cgpi: cgpi || '',
-      remarks: remarks || '',
-      certificate_id: '' // PDF text layer may not have this
+      name:           name || '',
+      prn_no:         prn_no || '',
+      serial_no:      serial_no || '',
+      examination:    examination || '',
+      branch:         branch || '',
+      session:        session || '',
+      sgpi:           sgpi || '',
+      cgpi:           cgpi || '',
+      remarks:        remarks || '',
+      certificate_id: certificate_id || ''
     }
 
     // Sort keys for consistent hashing (same as generateDataHash)
@@ -303,7 +366,7 @@ function DocumentVerification() {
     console.log('[Verify] Generated data hash from PDF text layer:', dataHashHex)
     console.log('[Verify] Hash input data:', certificateDataForHashing)
 
-    await performVerification(dataHashHex)
+    await performVerification(dataHashHex, certificateDataForHashing.certificate_id || undefined)
     return true
   }
 
@@ -388,7 +451,7 @@ function DocumentVerification() {
       console.log('  - certificate_id:', `"${certificateDataForHashing.certificate_id}"`)
       console.log('[Verify] Sorted JSON for hashing:', sortedJson)
 
-      await performVerification(dataHashHex)
+      await performVerification(dataHashHex, certificateDataForHashing.certificate_id || undefined)
     } catch (error: any) {
       console.error('[Verify] OCR failed, falling back to local:', error.message)
       // Fallback to client-side Tesseract if API fails
@@ -460,7 +523,7 @@ function DocumentVerification() {
     console.log('[Verify] Generated data hash from local OCR:', dataHashHex)
     console.log('[Verify] Hash input data:', certificateDataForHashing)
 
-    await performVerification(dataHashHex)
+    await performVerification(dataHashHex, certificateDataForHashing.certificate_id || undefined)
   }
 
   const handleProcess = async () => {
@@ -537,7 +600,6 @@ function DocumentVerification() {
     setProcessStep('Generating data hash from extracted data...')
 
     try {
-      // Create certificate data structure from extracted data (same format as issue process)
       const certificateDataForHashing = {
         name: extractedData.name || '',
         prn_no: extractedData.prn_no || '',
@@ -551,16 +613,14 @@ function DocumentVerification() {
         certificate_id: extractedData.certificate_id || ''
       }
 
-      // Sort keys for consistent hashing (same as generateDataHash)
       const sortedJson = JSON.stringify(certificateDataForHashing, Object.keys(certificateDataForHashing).sort())
-
       const dataHash = await sha256(new TextEncoder().encode(sortedJson))
       const dataHashHex = '0x' + dataHash
 
       console.log('[Verify] Generated data hash from extracted data:', dataHashHex)
       console.log('[Verify] Hash input data:', certificateDataForHashing)
 
-      await performVerification(dataHashHex)
+      await performVerification(dataHashHex, extractedData.certificate_id || undefined)
     } catch(e: any) {
       setResult({
         verified: false,
@@ -570,10 +630,9 @@ function DocumentVerification() {
     }
   }
 
-  const performVerification = async (hashToVerify: string) => {
+  const performVerification = async (hashToVerify: string, certId?: string) => {
     setProcessStep('Querying blockchain for hash authenticity...')
     try {
-      // Ensure hash has 0x prefix for consistency
       const formattedHash = hashToVerify.startsWith('0x') ? hashToVerify : '0x' + hashToVerify
 
       const res = await fetch('/api/verify', {
@@ -583,6 +642,11 @@ function DocumentVerification() {
       })
       const data = await res.json()
       setResult(data)
+
+      // If this is a verified Authblock certificate, store cert_id for full details display
+      if (data.verified && certId) {
+        setVerifiedCertId(certId)
+      }
     } catch (e: any) {
       setResult({
         verified: false,
@@ -804,64 +868,80 @@ function DocumentVerification() {
 
             {/* Results Component */}
             {result && (
-              <motion.div 
+              <motion.div
                 key="result"
-                initial={{ opacity: 0, scale: 0.95, y: 20 }} 
-                animate={{ opacity: 1, scale: 1, y: 0 }} 
-                className={`w-full max-w-3xl rounded-[2rem] overflow-hidden shadow-2xl border ${result.verified ? 'shadow-emerald-900/10 border-emerald-200' : 'shadow-red-900/10 border-red-200'}`}
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                className="w-full"
               >
-                {/* Result Header */}
-                <div className={`p-10 ${result.verified ? 'bg-gradient-to-br from-emerald-50 to-teal-50' : 'bg-gradient-to-br from-red-50 to-rose-50'} relative overflow-hidden flex flex-col items-center text-center`}>
-                   <div className={`absolute top-0 w-full h-1 ${result.verified ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                   
-                   <motion.div 
-                     initial={{ scale: 0 }}
-                     animate={{ scale: 1, rotate: result.verified ? [0, -10, 10, 0] : 0 }}
-                     transition={{ type: 'spring', damping: 12, delay: 0.1 }}
-                     className={`w-28 h-28 rounded-full flex items-center justify-center shadow-2xl mb-6 ${result.verified ? 'bg-emerald-500 shadow-emerald-500/40 text-white' : 'bg-red-500 shadow-red-500/40 text-white'}`}
-                   >
-                     {result.verified ? <ShieldCheck className="w-14 h-14" /> : <XCircle className="w-14 h-14" />}
-                   </motion.div>
-                   
-                   <h2 className={`text-3xl sm:text-4xl font-extrabold tracking-tight mb-4 ${result.verified ? 'text-emerald-950' : 'text-red-950'}`}>
-                      {result.verified ? 'Authenticity Verified' : 'Verification Failed'}
-                   </h2>
-                   <p className={`text-lg max-w-lg leading-relaxed font-medium ${result.verified ? 'text-emerald-700' : 'text-red-700'}`}>
-                      {result.message || (result.verified ? 'The computed cryptographic data hash matches identically with an immutable anchor generated strictly on the Sepolia Ethereum blockchain.' : 'The cryptographic hash of the extracted data does not match any official records on the blockchain.')}
-                   </p>
-                </div>
+                {/* Full certificate details when it's a verified Authblock certificate */}
+                {result.verified && verifiedCertId ? (
+                  <div>
+                    <CertificateVerification certId={verifiedCertId} />
+                    <div className="flex justify-center mt-6">
+                      <button
+                        onClick={() => { resetState() }}
+                        className="flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold bg-white border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50 shadow-sm transition hover:shadow-md active:scale-95"
+                      >
+                        <RefreshCcw className="w-5 h-5" /> Verify Another Document
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Simple card for failures or non-certificate documents */
+                  <div className={`w-full max-w-3xl mx-auto rounded-[2rem] overflow-hidden shadow-2xl border ${result.verified ? 'shadow-emerald-900/10 border-emerald-200' : 'shadow-red-900/10 border-red-200'}`}>
+                    {/* Result Header */}
+                    <div className={`p-10 ${result.verified ? 'bg-gradient-to-br from-emerald-50 to-teal-50' : 'bg-gradient-to-br from-red-50 to-rose-50'} relative overflow-hidden flex flex-col items-center text-center`}>
+                      <div className={`absolute top-0 w-full h-1 ${result.verified ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                      <motion.div
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1, rotate: result.verified ? [0, -10, 10, 0] : 0 }}
+                        transition={{ type: 'spring', damping: 12, delay: 0.1 }}
+                        className={`w-28 h-28 rounded-full flex items-center justify-center shadow-2xl mb-6 ${result.verified ? 'bg-emerald-500 shadow-emerald-500/40 text-white' : 'bg-red-500 shadow-red-500/40 text-white'}`}
+                      >
+                        {result.verified ? <ShieldCheck className="w-14 h-14" /> : <XCircle className="w-14 h-14" />}
+                      </motion.div>
+                      <h2 className={`text-3xl sm:text-4xl font-extrabold tracking-tight mb-4 ${result.verified ? 'text-emerald-950' : 'text-red-950'}`}>
+                        {result.verified ? 'Authenticity Verified' : 'Verification Failed'}
+                      </h2>
+                      <p className={`text-lg max-w-lg leading-relaxed font-medium ${result.verified ? 'text-emerald-700' : 'text-red-700'}`}>
+                        {result.message || (result.verified ? 'The computed cryptographic data hash matches identically with an immutable anchor on the Sepolia Ethereum blockchain.' : 'The cryptographic hash of the extracted data does not match any official records on the blockchain.')}
+                      </p>
+                    </div>
 
-                {/* Optional Record details */}
-                {result.verified && result.record && (
-                  <div className="bg-white p-10 border-t border-emerald-100">
-                    <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-8 border-b border-slate-100 pb-4">Stored Ledger Details</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-8 gap-x-12">
-                      <div className="group">
-                        <span className="text-[11px] font-bold uppercase text-slate-400 block mb-2">Student Identity</span>
-                        <span className="text-xl font-bold text-slate-900 block truncate">{result.record.student_name}</span>
+                    {/* Optional Record details */}
+                    {result.verified && result.record && (
+                      <div className="bg-white p-10 border-t border-emerald-100">
+                        <h3 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-8 border-b border-slate-100 pb-4">Stored Ledger Details</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-8 gap-x-12">
+                          <div className="group">
+                            <span className="text-[11px] font-bold uppercase text-slate-400 block mb-2">Student Identity</span>
+                            <span className="text-xl font-bold text-slate-900 block truncate">{result.record.student_name}</span>
+                          </div>
+                          <div className="group">
+                            <span className="text-[11px] font-bold uppercase text-slate-400 block mb-2">PRN Number</span>
+                            <span className="text-xl font-bold text-slate-900 block font-mono tracking-tight">{result.record.prn_no}</span>
+                          </div>
+                          <div className="group sm:col-span-2">
+                            <span className="text-[11px] font-bold uppercase text-emerald-600 block mb-2">Smart Contract Execution Root</span>
+                            <a href={`https://sepolia.etherscan.io/tx/${result.txHash}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-lg text-slate-600 font-mono text-sm hover:text-emerald-700 transition-colors w-full break-all shadow-sm">
+                              {result.txHash} ↗
+                            </a>
+                          </div>
+                        </div>
                       </div>
-                      <div className="group">
-                        <span className="text-[11px] font-bold uppercase text-slate-400 block mb-2">PRN Number</span>
-                        <span className="text-xl font-bold text-slate-900 block font-mono tracking-tight">{result.record.prn_no}</span>
-                      </div>
-                      <div className="group sm:col-span-2">
-                        <span className="text-[11px] font-bold uppercase text-emerald-600 block mb-2">Smart Contract Execution Root</span>
-                        <a href={`https://sepolia.etherscan.io/tx/${result.txHash}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-lg text-slate-600 font-mono text-sm hover:text-emerald-700 transition-colors w-full break-all shadow-sm">
-                          {result.txHash} ↗
-                        </a>
-                      </div>
+                    )}
+
+                    <div className={`p-6 border-t flex justify-center bg-slate-50/50 backdrop-blur-sm ${result.verified ? 'border-emerald-100' : 'border-red-100'}`}>
+                      <button
+                        onClick={() => { setFile(null); resetState(); }}
+                        className={`flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold shadow-sm transition hover:shadow-md active:scale-95 ${result.verified ? 'bg-white border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50' : 'bg-white border-2 border-red-200 text-red-700 hover:bg-red-50'}`}
+                      >
+                        <RefreshCcw className="w-5 h-5" /> Verify Another Document
+                      </button>
                     </div>
                   </div>
                 )}
-                
-                <div className={`p-6 border-t flex justify-center bg-slate-50/50 backdrop-blur-sm ${result.verified ? 'border-emerald-100' : 'border-red-100'}`}>
-                  <button 
-                    onClick={() => { setFile(null); resetState(); }} 
-                    className={`flex items-center gap-2 px-8 py-3.5 rounded-xl font-bold shadow-sm transition hover:shadow-md active:scale-95 ${result.verified ? 'bg-white border-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50' : 'bg-white border-2 border-red-200 text-red-700 hover:bg-red-50'}`}
-                  >
-                    <RefreshCcw className="w-5 h-5" /> Verify Another Document
-                  </button>
-                </div>
               </motion.div>
             )}
           </AnimatePresence>

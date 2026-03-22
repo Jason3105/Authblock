@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Container } from '@/components/ui'
 import { ArrowRight } from 'lucide-react'
 
-export function CTA() {
+export function CTA({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   return (
     <section className="relative py-24 overflow-hidden bg-white">
       <Container className="relative z-10">
@@ -24,10 +24,10 @@ export function CTA() {
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href="/login"
+              href={isLoggedIn ? "/dashboard" : "/login"}
               className="inline-flex items-center gap-2 px-8 py-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/25 hover:shadow-xl hover:shadow-blue-600/30"
             >
-              Launch App
+              {isLoggedIn ? "Dashboard" : "Login"}
               <ArrowRight className="w-5 h-5" />
             </Link>
             <Link

@@ -2,13 +2,14 @@
 
 import React, { useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Terminal, CheckCircle2, XCircle, Loader2, Info, RotateCcw } from 'lucide-react'
+import { Terminal, CheckCircle2, XCircle, Loader2, Info, RotateCcw, ExternalLink } from 'lucide-react'
 
 export interface TerminalLog {
   id: number
   message: string
   status: 'info' | 'processing' | 'success' | 'error' | 'skip'
   timestamp: Date
+  txHash?: string
 }
 
 interface ProcessingTerminalProps {
@@ -129,8 +130,18 @@ export default function ProcessingTerminal({
                     log.status === 'processing' ? 'animate-spin' : ''
                   }`}
                 />
-                <span className={`${log.status === 'skip' ? 'text-slate-500' : 'text-slate-300'}`}>
+                <span className={`${log.status === 'skip' ? 'text-slate-500' : 'text-slate-300'} flex-1`}>
                   {log.message}
+                  {log.txHash && (
+                    <a 
+                      href={`https://sepolia.etherscan.io/tx/${log.txHash}`} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 ml-3 font-semibold text-blue-400 hover:text-blue-300 transition-colors bg-blue-500/10 px-2 py-0.5 rounded"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Etherscan
+                    </a>
+                  )}
                 </span>
               </motion.div>
             )

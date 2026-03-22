@@ -132,7 +132,7 @@ const credentials = [
   },
 ]
 
-export function Hero() {
+export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const sectionRef = useRef<HTMLElement>(null)
   const [hoveredCell, setHoveredCell] = useState<{ col: number; row: number } | null>(null)
 
@@ -187,11 +187,11 @@ export function Hero() {
             {/* CTA Buttons */}
             <div className="flex flex-wrap gap-3 mb-10">
               <Link
-                href="/login"
+                href={isLoggedIn ? "/dashboard" : "/login"}
                 className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/25"
               >
                 <Image src="/logo.png" alt="" width={16} height={16} className="w-4 h-4" />
-                Launch App
+                {isLoggedIn ? "Dashboard" : "Login"}
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <Link

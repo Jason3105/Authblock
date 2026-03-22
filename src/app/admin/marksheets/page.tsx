@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 import { 
-  FileText, UploadCloud, FileSignature, AlertCircle, Loader2, CheckCircle, Search, Plus, Trash2, History, Download 
+  FileText, UploadCloud, FileSignature, AlertCircle, Loader2, CheckCircle, Search, Plus, Trash2, History, Download, ExternalLink
 } from 'lucide-react'
 import AdminShell, { type AdminRecord } from '@/components/admin/AdminShell'
 import ProcessingTerminal, { type TerminalLog } from '@/components/admin/ProcessingTerminal'
@@ -25,6 +25,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [successLink, setSuccessLink] = useState('')
+  const [successTx, setSuccessTx] = useState('')
   const [history, setHistory] = useState<any[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -38,8 +39,8 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
   const [terminalSuccessCount, setTerminalSuccessCount] = useState(0)
   const [terminalErrorCount, setTerminalErrorCount] = useState(0)
 
-  const addLog = useCallback((message: string, status: TerminalLog['status']) => {
-    setTerminalLogs(prev => [...prev, { id: Date.now() + Math.random(), message, status, timestamp: new Date() }])
+  const addLog = useCallback((message: string, status: TerminalLog['status'], txHash?: string) => {
+    setTerminalLogs(prev => [...prev, { id: Date.now() + Math.random(), message, status, timestamp: new Date(), txHash }])
   }, [])
 
   const resetTerminal = useCallback(() => {
@@ -78,6 +79,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
     setIsSubmitting(true)
     setError('')
     setSuccessLink('')
+    setSuccessTx('')
 
     try {
       // Auto compute manual entry CP x GP:
@@ -106,6 +108,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
       if (!res.ok) throw new Error(data.error || 'Failed to issue marksheet')
 
       setSuccessLink(data.marksheet?.url || data.certificate?.url || '')
+      setSuccessTx(data.certificate?.tx_data || '')
       // Reset form on success
       setFormData({
         serial_no: '',
@@ -136,6 +139,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
     setIsSubmitting(true)
     setError('')
     setSuccessLink('')
+    setSuccessTx('')
 
     const fileExt = file.name.split('.').pop()?.toLowerCase()
     
@@ -262,7 +266,8 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
           if (res.ok) {
             successCount++
             setTerminalSuccessCount(successCount)
-            addLog(`${rowLabel} ✓ Certificate issued for ${sName}`, 'success')
+            const data = await res.json()
+            addLog(`${rowLabel} ✓ Certificate issued for ${sName}`, 'success', data.certificate?.tx_data)
           } else {
             errorCount++
             setTerminalErrorCount(errorCount)
@@ -283,6 +288,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
       if (successCount > 0) {
         addLog(`\nBulk processing complete: ${successCount} succeeded, ${errorCount} failed.`, 'info')
         setSuccessLink(`Successfully issued ${successCount} certificates! View them all in the History tab.`)
+        setSuccessTx('')
         fetchHistory() // Refresh history
       } else {
         addLog('No valid certificates were issued.', 'error')
@@ -413,9 +419,16 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                 </div>
               </div>
               {successLink.includes('http') && (
-                <a href={successLink} target="_blank" rel="noreferrer" className="btn-primary flex-shrink-0 !bg-emerald-600 hover:!bg-emerald-700 border-none shadow-emerald-500/30">
-                  View PDF Marksheet
-                </a>
+                <div className="flex flex-col sm:flex-row gap-2 shrink-0 border-t sm:border-l sm:border-t-0 border-emerald-200/50 pt-3 sm:pt-0 sm:pl-4 mt-3 sm:mt-0">
+                  <a href={successLink} target="_blank" rel="noreferrer" className="btn-primary !bg-emerald-600 hover:!bg-emerald-700 border-none shadow-emerald-500/30 text-xs py-2 px-3 h-auto">
+                    View PDF
+                  </a>
+                  {successTx && (
+                    <a href={`https://sepolia.etherscan.io/tx/${successTx}`} target="_blank" rel="noreferrer" className="btn-secondary !bg-white !text-blue-600 !border-blue-100 hover:!border-blue-300 text-xs py-2 px-3 h-auto shadow-sm">
+                      <ExternalLink className="w-3.5 h-3.5 mr-1 inline-block" /> Etherscan
+                    </a>
+                  )}
+                </div>
               )}
             </motion.div>
           )}
@@ -695,6 +708,16 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-lg text-xs font-bold transition-colors border border-purple-100 hover:border-purple-600"
                                  >
                                    <Download className="w-3.5 h-3.5" /> Certificate
+                                 </a>
+                               )}
+                               {m.tx_hash_data && (
+                                 <a
+                                   href={`https://sepolia.etherscan.io/tx/${m.tx_hash_data}`}
+                                   target="_blank"
+                                   rel="noreferrer"
+                                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 text-sky-600 hover:bg-sky-600 hover:text-white rounded-lg text-xs font-bold transition-colors border border-sky-100 hover:border-sky-600"
+                                 >
+                                   <ExternalLink className="w-3.5 h-3.5" /> Etherscan
                                  </a>
                                )}
                                {!m.supabase_pdf_url && !m.certificate_url && (

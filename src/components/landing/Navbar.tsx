@@ -4,16 +4,17 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Container } from '@/components/ui'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, LogOut } from 'lucide-react'
 
 const navLinks = [
-  { name: 'FEATURES', href: '#features', dot: '◆', dotColor: 'text-blue-500' },
-  { name: 'HOW IT WORKS', href: '#how-it-works', dot: '■', dotColor: 'text-slate-900' },
-  { name: 'CREDENTIALS', href: '#credentials', dot: '▲', dotColor: 'text-blue-500' },
-  { name: 'ABOUT', href: '#about', dot: '◆', dotColor: 'text-blue-500' },
+  { name: 'FEATURES', href: '/#features', dot: '◆', dotColor: 'text-blue-500' },
+  { name: 'HOW IT WORKS', href: '/#how-it-works', dot: '■', dotColor: 'text-slate-900' },
+  { name: 'CREDENTIALS', href: '/#credentials', dot: '▲', dotColor: 'text-blue-500' },
+  { name: 'SCAN QR', href: '/scan', dot: '●', dotColor: 'text-emerald-500' },
+  { name: 'ABOUT', href: '/#about', dot: '◆', dotColor: 'text-blue-500' },
 ]
 
-export function Navbar() {
+export function Navbar({ isLoggedIn = false, user = null }: { isLoggedIn?: boolean, user?: any }) {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
@@ -60,12 +61,32 @@ export function Navbar() {
 
           {/* CTA Button */}
           <div className="hidden lg:flex items-center">
-            <Link
-              href="/login"
-              className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-full hover:bg-blue-700 transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/25"
-            >
-              Launch App →
-            </Link>
+            {user ? (
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-3 border-r border-slate-200 pr-6">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
+                    {user.full_name?.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-slate-900 leading-tight">{user.full_name}</span>
+                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">{user.prn_no}</span>
+                  </div>
+                </div>
+                <a
+                  href="/api/auth/logout"
+                  className="text-sm font-semibold text-red-600 hover:text-red-700 flex items-center gap-2 px-3 py-2 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <LogOut className="w-4 h-4" /> Sign Out
+                </a>
+              </div>
+            ) : (
+              <Link
+                href={isLoggedIn ? "/dashboard" : "/login"}
+                className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-full hover:bg-blue-700 transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/25"
+              >
+                {isLoggedIn ? "Dashboard →" : "Login →"}
+              </Link>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -94,10 +115,10 @@ export function Navbar() {
               ))}
               <div className="pt-3 mt-2 border-t border-slate-100">
                 <Link
-                  href="/login"
+                  href={isLoggedIn ? "/dashboard" : "/login"}
                   className="block w-full text-center px-5 py-3 bg-blue-600 text-white text-sm font-semibold rounded-full hover:bg-blue-700 transition-colors"
                 >
-                  Launch App →
+                  {isLoggedIn ? "Dashboard →" : "Login →"}
                 </Link>
               </div>
             </div>
