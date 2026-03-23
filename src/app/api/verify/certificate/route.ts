@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
     const expectedHash = searchParams.get('hash')
     const expectedTx = searchParams.get('tx')
 
-    if (!certId) {
-      return NextResponse.json({ error: 'Certificate ID required' }, { status: 400 })
+    if (!certId && !expectedHash) {
+      return NextResponse.json({ error: 'Certificate ID or hash required' }, { status: 400 })
     }
 
     console.log('[Verify] Certificate verification request:', { certId, expectedHash, expectedTx })
@@ -22,17 +22,29 @@ export async function GET(request: NextRequest) {
     // Fetch certificate from marksheets table
     // @ts-ignore
     const db = sql()
-    const result = await db`
-      SELECT
-        m.certificate_id, m.student_name, m.prn_no, m.serial_no, m.examination, m.branch,
-        m.session_name, m.sgpi, m.cgpi, m.remarks, m.data_hash, m.pdf_hash,
-        m.tx_hash_data, m.tx_hash_pdf, m.verification_url, m.issued_at, m.certificate_data,
-        a.name as issued_by_name
-      FROM marksheets m
-      LEFT JOIN admin a ON m.issued_by = a.id
-      WHERE m.certificate_id = ${certId}
-      LIMIT 1
-    `
+    const result = certId
+      ? await db`
+          SELECT
+            m.certificate_id, m.student_name, m.prn_no, m.serial_no, m.examination, m.branch,
+            m.session_name, m.sgpi, m.cgpi, m.remarks, m.data_hash, m.pdf_hash,
+            m.tx_hash_data, m.tx_hash_pdf, m.verification_url, m.issued_at, m.certificate_data,
+            a.name as issued_by_name
+          FROM marksheets m
+          LEFT JOIN admin a ON m.issued_by = a.id
+          WHERE m.certificate_id = ${certId}
+          LIMIT 1
+        `
+      : await db`
+          SELECT
+            m.certificate_id, m.student_name, m.prn_no, m.serial_no, m.examination, m.branch,
+            m.session_name, m.sgpi, m.cgpi, m.remarks, m.data_hash, m.pdf_hash,
+            m.tx_hash_data, m.tx_hash_pdf, m.verification_url, m.issued_at, m.certificate_data,
+            a.name as issued_by_name
+          FROM marksheets m
+          LEFT JOIN admin a ON m.issued_by = a.id
+          WHERE m.data_hash = ${expectedHash} OR m.pdf_hash = ${expectedHash}
+          LIMIT 1
+        `
 
     if (!result || result.length === 0) {
       return NextResponse.json({
@@ -43,8 +55,11 @@ export async function GET(request: NextRequest) {
     }
 
     const certificate = result[0]
+    certId = certificate.certificate_id
     const storedDataHash = certificate.data_hash
+    const storedPdfHash = certificate.pdf_hash
     const storedTxHash = certificate.tx_hash_data
+    const storedPdfTxHash = certificate.tx_hash_pdf
 
     console.log('[Verify] Found certificate:', {
       id: certificate.certificate_id,
@@ -57,14 +72,30 @@ export async function GET(request: NextRequest) {
     let hashVerified = true
     let txVerified = true
 
-    if (expectedHash && storedDataHash) {
-      hashVerified = expectedHash.toLowerCase() === storedDataHash.toLowerCase()
-      console.log('[Verify] Hash verification:', { expected: expectedHash, stored: storedDataHash, match: hashVerified })
+    if (expectedHash && (storedDataHash || storedPdfHash)) {
+      const expected = expectedHash.toLowerCase()
+      hashVerified =
+        (storedDataHash && expected === storedDataHash.toLowerCase()) ||
+        (storedPdfHash && expected === storedPdfHash.toLowerCase())
+      console.log('[Verify] Hash verification:', {
+        expected: expectedHash,
+        storedDataHash,
+        storedPdfHash,
+        match: hashVerified
+      })
     }
 
-    if (expectedTx && storedTxHash) {
-      txVerified = expectedTx.toLowerCase() === storedTxHash.toLowerCase()
-      console.log('[Verify] TX verification:', { expected: expectedTx, stored: storedTxHash, match: txVerified })
+    if (expectedTx && (storedTxHash || storedPdfTxHash)) {
+      const expected = expectedTx.toLowerCase()
+      txVerified =
+        (storedTxHash && expected === storedTxHash.toLowerCase()) ||
+        (storedPdfTxHash && expected === storedPdfTxHash.toLowerCase())
+      console.log('[Verify] TX verification:', {
+        expected: expectedTx,
+        storedTxHash,
+        storedPdfTxHash,
+        match: txVerified
+      })
     }
 
     // Verify hash exists on blockchain
@@ -74,9 +105,14 @@ export async function GET(request: NextRequest) {
     try {
       const { contract } = await getBlockchainContract()
 
+      const hashToCheck =
+        expectedHash && expectedHash.toLowerCase() === String(storedPdfHash || '').toLowerCase()
+          ? storedPdfHash
+          : storedDataHash
+
       // The contract exposes verifyHash(bytes32) → (bool exists, uint256 timestamp)
-      // storedDataHash is already a 0x-prefixed 32-byte hex string
-      const [exists, timestamp] = await contract.verifyHash(storedDataHash)
+      // hashToCheck is a 0x-prefixed 32-byte hex string
+      const [exists, timestamp] = await contract.verifyHash(hashToCheck)
 
       onBlockchain = exists && Number(timestamp) > 0
       blockchainTimestamp = onBlockchain
@@ -84,7 +120,7 @@ export async function GET(request: NextRequest) {
         : null
 
       console.log('[Verify] Blockchain verification:', {
-        hash: storedDataHash?.substring(0, 16) + '...',
+        hash: hashToCheck?.substring(0, 16) + '...',
         exists: onBlockchain,
         timestamp: blockchainTimestamp
       })
@@ -114,7 +150,9 @@ export async function GET(request: NextRequest) {
         cgpi: certificate.cgpi,
         remarks: certificate.remarks,
         issued_at: certificate.issued_at,
-        issued_by: certificate.issued_by_name
+        issued_by: certificate.issued_by_name,
+        verification_url: certificate.verification_url,
+        certificate_data: certificate.certificate_data
       },
       verification: {
         hash_valid: hashVerified,
@@ -128,7 +166,12 @@ export async function GET(request: NextRequest) {
       },
       blockchain: {
         data_hash: storedDataHash,
+        pdf_hash: certificate.pdf_hash,
+        tx_hash_data: certificate.tx_hash_data,
+        tx_hash_pdf: certificate.tx_hash_pdf,
         tx_hash: storedTxHash,
+        etherscan_data_url: certificate.tx_hash_data ? `https://sepolia.etherscan.io/tx/${certificate.tx_hash_data}` : null,
+        etherscan_pdf_url: certificate.tx_hash_pdf ? `https://sepolia.etherscan.io/tx/${certificate.tx_hash_pdf}` : null,
         etherscan_url: `https://sepolia.etherscan.io/tx/${storedTxHash}`
       }
     })

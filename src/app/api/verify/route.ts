@@ -74,6 +74,7 @@ export async function POST(req: Request) {
       matchType,
       txHash,
       record: {
+        certificate_id: record.certificate_id,
         serial_no: record.serial_no,
         student_name: record.student_name,
         prn_no: record.prn_no,
@@ -84,6 +85,10 @@ export async function POST(req: Request) {
         cgpi: record.cgpi,
         remarks: record.remarks,
         issued_at: record.issued_at,
+        data_hash: record.data_hash,
+        pdf_hash: record.pdf_hash,
+        tx_hash_data: record.tx_hash_data,
+        tx_hash_pdf: record.tx_hash_pdf,
         original_pdf_url: record.supabase_pdf_url
       }
     })

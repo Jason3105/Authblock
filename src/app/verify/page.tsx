@@ -643,9 +643,10 @@ function DocumentVerification() {
       const data = await res.json()
       setResult(data)
 
-      // If this is a verified Authblock certificate, store cert_id for full details display
-      if (data.verified && certId) {
-        setVerifiedCertId(certId)
+      // If this is a verified Authblock certificate, resolve cert_id for full details display
+      if (data.verified) {
+        const resolvedCertId = certId || data?.record?.certificate_id || null
+        setVerifiedCertId(resolvedCertId)
       }
     } catch (e: any) {
       setResult({
@@ -875,9 +876,13 @@ function DocumentVerification() {
                 className="w-full"
               >
                 {/* Full certificate details when it's a verified Authblock certificate */}
-                {result.verified && verifiedCertId ? (
+                {result.verified && (verifiedCertId || result?.record?.data_hash || result?.record?.pdf_hash) ? (
                   <div>
-                    <CertificateVerification certId={verifiedCertId} />
+                    <CertificateVerification
+                      certId={verifiedCertId || undefined}
+                      hash={result?.record?.data_hash || result?.record?.pdf_hash}
+                      tx={result?.txHash || result?.record?.tx_hash_data || result?.record?.tx_hash_pdf}
+                    />
                     <div className="flex justify-center mt-6">
                       <button
                         onClick={() => { resetState() }}
