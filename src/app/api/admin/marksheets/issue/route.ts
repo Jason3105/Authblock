@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
-import { supabase } from '@/lib/supabase'
+import { uploadToS3 } from '@/lib/s3'
 import { sql } from '@/lib/db'
 import fs from 'fs'
 import path from 'path'
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const {
-      serial_no, student_name, prn_no, examination, branch, session_name, sgpi, cgpi, date, remarks, subjects, issued_by
+      serial_no, student_name, student_email, prn_no, examination, branch, session_name, sgpi, cgpi, date, remarks, subjects, issued_by
     } = body
 
     if (!student_name || !prn_no || !serial_no) {
@@ -345,41 +345,22 @@ export async function POST(req: Request) {
     console.log('[Certificate] Authblock Certificate PDF generated, size:', certPdfBytes.length, 'bytes')
 
     // ============================================================
-    // PART 6: UPLOAD AUTHBLOCK CERTIFICATE TO SUPABASE
+    // PART 6: UPLOAD AUTHBLOCK CERTIFICATE TO AWS S3
     // ============================================================
-    const certFileName = `${certificateData.certificate_id}.pdf`
-    console.log('[Supabase] Uploading certificate to Auth_Certificates bucket...')
+    const certS3Key = `certificates/${certificateData.certificate_id}.pdf`
+    console.log('[S3] Uploading certificate to authblock-docs/certificates/...')
 
-    const { error: certUploadError } = await supabase.storage
-      .from('Auth_Certificates')
-      .upload(certFileName, certPdfBytes, { contentType: 'application/pdf', upsert: false })
-
-    if (certUploadError) {
-      console.error('[Supabase] Certificate upload error:', certUploadError)
-      throw new Error(`Certificate storage upload failed: ${certUploadError.message}`)
-    }
-
-    const { data: certUrlData } = supabase.storage.from('Auth_Certificates').getPublicUrl(certFileName)
-    const certPdfUrl = certUrlData.publicUrl
-    console.log('[Supabase] ✓ Certificate uploaded:', certPdfUrl)
+    const certPdfUrl = await uploadToS3(certS3Key, certPdfBytes, 'application/pdf')
+    console.log('[S3] ✓ Certificate uploaded:', certPdfUrl)
 
     // ============================================================
-    // PART 7: UPLOAD MARKSHEET TO SUPABASE
+    // PART 7: UPLOAD MARKSHEET TO AWS S3
     // ============================================================
-    console.log('\n[Supabase] Uploading marksheet to FRCRCE_Marksheets bucket...')
+    console.log('\n[S3] Uploading marksheet to authblock-docs/marksheets/...')
 
-    const { error: uploadError } = await supabase.storage
-      .from('FRCRCE_Marksheets')
-      .upload(marksheetFileName, marksheetPdfBytes, { contentType: 'application/pdf', upsert: false })
-
-    if (uploadError) {
-      console.error('[Supabase] Marksheet upload error:', uploadError)
-      throw new Error(`Marksheet storage upload failed: ${uploadError.message}`)
-    }
-
-    const { data: marksheetUrlData } = supabase.storage.from('FRCRCE_Marksheets').getPublicUrl(marksheetFileName)
-    const marksheetPdfUrl = marksheetUrlData.publicUrl
-    console.log('[Supabase] ✓ Marksheet uploaded:', marksheetPdfUrl)
+    const marksheetS3Key = `marksheets/${marksheetFileName}`
+    const marksheetPdfUrl = await uploadToS3(marksheetS3Key, marksheetPdfBytes, 'application/pdf')
+    console.log('[S3] ✓ Marksheet uploaded:', marksheetPdfUrl)
 
     // ============================================================
     // PART 8: SAVE TO DATABASE
@@ -402,9 +383,10 @@ export async function POST(req: Request) {
 
     console.log('\n[Database] Auto-registering student in users table...')
     await db`
-      INSERT INTO users (prn_no, full_name)
-      VALUES (${prn_no}, ${student_name})
-      ON CONFLICT (prn_no) DO NOTHING
+      INSERT INTO users (prn_no, full_name, student_email)
+      VALUES (${prn_no}, ${student_name}, ${student_email || null})
+      ON CONFLICT (prn_no) DO UPDATE 
+      SET student_email = COALESCE(users.student_email, EXCLUDED.student_email)
     `
 
     const result = await db`

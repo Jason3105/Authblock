@@ -55,7 +55,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
 
   // Manual Form State
   const [formData, setFormData] = useState({
-    serial_no: '', student_name: '', prn_no: '', examination: '', branch: '', session_name: '',
+    serial_no: '', student_name: '', student_email: '', prn_no: '', examination: '', branch: '', session_name: '',
     sgpi: '', cgpi: '', remarks: '', date: '',
     subjects: [{ code: '', title: '', credits: '', grade: '', gp: '', cpgp: '' }]
   })
@@ -113,6 +113,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
       setFormData({
         serial_no: '',
         student_name: '',
+        student_email: '',
         examination: '',
         branch: '',
         session_name: '',
@@ -245,6 +246,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
           const payload = {
             serial_no: row.serial_no || '',
             student_name: sName,
+            student_email: row.student_email?.toString().trim() || '',
             prn_no: sPrn,
             examination: row.examination || 'Bachelor of Engineering Sem-IV',
             branch: row.branch || 'Computer Engineering',
@@ -307,12 +309,12 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
   }
 
   function downloadTemplate() {
-    const headers = ['serial_no', 'student_name', 'prn_no', 'examination', 'branch', 'session_name', 'sgpi', 'cgpi', 'remarks', 'date']
+    const headers = ['serial_no', 'student_name', 'student_email', 'prn_no', 'examination', 'branch', 'session_name', 'sgpi', 'cgpi', 'remarks', 'date']
     // Add columns for 12 subjects
     for (let i = 1; i <= 12; i++) {
       headers.push(`sub_${i}_code`, `sub_${i}_title`, `sub_${i}_credits`, `sub_${i}_grade`, `sub_${i}_gp`)
     }
-    const row = ['SN-1234', 'JOHN DOE', '20230164000000', 'BE Sem-IV', 'Computer Engineering', 'June-2025', '9.5', '9.3', 'SUCCESSFUL', '30-06-2025']
+    const row = ['SN-1234', 'JOHN DOE', 'john.doe@example.com', '20230164000000', 'BE Sem-IV', 'Computer Engineering', 'June-2025', '9.5', '9.3', 'SUCCESSFUL', '30-06-2025']
     for (let i = 1; i <= 12; i++) {
        row.push(`CSC${400+i}`, `SUBJECT ${i}`, '4', 'O', '10')
     }
@@ -452,10 +454,17 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                         value={formData.prn_no} onChange={e => setFormData({...formData, prn_no: e.target.value})} />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Student Full Name</label>
-                    <input type="text" required className="input font-medium" 
-                      value={formData.student_name} onChange={e => setFormData({...formData, student_name: e.target.value})} />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Student Full Name</label>
+                      <input type="text" required className="input font-medium" 
+                        value={formData.student_name} onChange={e => setFormData({...formData, student_name: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Email Address</label>
+                      <input type="email" placeholder="Optional" className="input font-medium" 
+                        value={formData.student_email} onChange={e => setFormData({...formData, student_email: e.target.value})} />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>

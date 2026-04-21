@@ -17,7 +17,7 @@ const subjectTemplates = [
 ]
 
 // Generate Headers
-const headers = ['serial_no', 'student_name', 'prn_no', 'examination', 'branch', 'session_name', 'sgpi', 'cgpi', 'remarks', 'date']
+const headers = ['serial_no', 'student_name', 'student_email', 'prn_no', 'examination', 'branch', 'session_name', 'sgpi', 'cgpi', 'remarks', 'date']
 for (let i = 1; i <= 12; i++) {
   headers.push(`sub_${i}_code`, `sub_${i}_title`, `sub_${i}_credits`, `sub_${i}_grade`, `sub_${i}_gp`, `sub_${i}_cpgp`)
 }
@@ -25,16 +25,16 @@ for (let i = 1; i <= 12; i++) {
 const data = [headers]
 
 const students = [
-  { serial_no: 'SN-001', name: 'ALEXANDER WRIGHT', prn: '2023016400968410', remarks: 'SUCCESSFUL', sgpi: '8.90', cgpi: '8.45' },
-  { serial_no: 'SN-002', name: 'SAMANTHA LEO', prn: '2023016400968411', remarks: 'SUCCESSFUL', sgpi: '9.20', cgpi: '9.10' },
-  { serial_no: 'SN-003', name: 'MARCUS CHEN', prn: '2023016400968412', remarks: 'SUCCESSFUL', sgpi: '7.80', cgpi: '8.00' },
-  { serial_no: 'SN-004', name: 'SARAH JENKINS', prn: '2023016400968413', remarks: 'SUCCESSFUL', sgpi: '8.50', cgpi: '8.20' },
-  { serial_no: 'SN-005', name: 'MICHAEL BOYD', prn: '2023016400968414', remarks: 'SUCCESSFUL', sgpi: '9.50', cgpi: '9.30' },
-  { serial_no: 'SN-006', name: 'EMILY STONE', prn: '2023016400968415', remarks: 'SUCCESSFUL', sgpi: '8.10', cgpi: '8.05' },
-  { serial_no: 'SN-007', name: 'JOSHUA KIM', prn: '2023016400968416', remarks: 'SUCCESSFUL', sgpi: '9.80', cgpi: '9.60' },
-  { serial_no: 'SN-008', name: 'OLIVIA MARTINEZ', prn: '2023016400968417', remarks: 'SUCCESSFUL', sgpi: '7.50', cgpi: '7.90' },
-  { serial_no: 'SN-009', name: 'DANIEL ROE', prn: '2023016400968418', remarks: 'SUCCESSFUL', sgpi: '8.75', cgpi: '8.50' },
-  { serial_no: 'SN-010', name: 'JESSICA WANG', prn: '2023016400968419', remarks: 'SUCCESSFUL', sgpi: '9.05', cgpi: '8.85' }
+  { serial_no: 'SN-001', name: 'ALEXANDER WRIGHT', email: 'alexander.w@example.com', prn: '2023016400968410', remarks: 'SUCCESSFUL', sgpi: '8.90', cgpi: '8.45' },
+  { serial_no: 'SN-002', name: 'SAMANTHA LEO', email: 'samantha.l@example.com', prn: '2023016400968411', remarks: 'SUCCESSFUL', sgpi: '9.20', cgpi: '9.10' },
+  { serial_no: 'SN-003', name: 'MARCUS CHEN', email: 'marcus.c@example.com', prn: '2023016400968412', remarks: 'SUCCESSFUL', sgpi: '7.80', cgpi: '8.00' },
+  { serial_no: 'SN-004', name: 'SARAH JENKINS', email: 'sarah.j@example.com', prn: '2023016400968413', remarks: 'SUCCESSFUL', sgpi: '8.50', cgpi: '8.20' },
+  { serial_no: 'SN-005', name: 'MICHAEL BOYD', email: 'michael.b@example.com', prn: '2023016400968414', remarks: 'SUCCESSFUL', sgpi: '9.50', cgpi: '9.30' },
+  { serial_no: 'SN-006', name: 'EMILY STONE', email: 'emily.s@example.com', prn: '2023016400968415', remarks: 'SUCCESSFUL', sgpi: '8.10', cgpi: '8.05' },
+  { serial_no: 'SN-007', name: 'JOSHUA KIM', email: 'joshua.k@example.com', prn: '2023016400968416', remarks: 'SUCCESSFUL', sgpi: '9.80', cgpi: '9.60' },
+  { serial_no: 'SN-008', name: 'OLIVIA MARTINEZ', email: 'olivia.m@example.com', prn: '2023016400968417', remarks: 'SUCCESSFUL', sgpi: '7.50', cgpi: '7.90' },
+  { serial_no: 'SN-009', name: 'DANIEL ROE', email: 'daniel.r@example.com', prn: '2023016400968418', remarks: 'SUCCESSFUL', sgpi: '8.75', cgpi: '8.50' },
+  { serial_no: 'SN-010', name: 'JESSICA WANG', email: 'jessica.w@example.com', prn: '2023016400968419', remarks: 'SUCCESSFUL', sgpi: '9.05', cgpi: '8.85' }
 ]
 
 const grades = [
@@ -45,7 +45,7 @@ const grades = [
 ]
 
 for (const student of students) {
-  const row = [student.serial_no, student.name, student.prn, 'Bachelor of Engineering Sem-IV', 'Computer Engineering', 'June-2025', student.sgpi, student.cgpi, student.remarks, '30-06-2025']
+  const row = [student.serial_no, student.name, student.email, student.prn, 'Bachelor of Engineering Sem-IV', 'Computer Engineering', 'June-2025', student.sgpi, student.cgpi, student.remarks, '30-06-2025']
   for (const sub of subjectTemplates) {
     const rGrade = grades[Math.floor(Math.random() * grades.length)]
     const credits = parseInt(sub.credits)
