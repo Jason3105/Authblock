@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1033.0",
+    "@aws-sdk/client-ses": "^3.1033.0",
+    "@aws-sdk/client-sns": "^3.1033.0",
     "@neondatabase/serverless": "^1.0.2",
     "@rainbow-me/rainbowkit": "^2.0.0",
     "@react-pdf/renderer": "^4.3.2",

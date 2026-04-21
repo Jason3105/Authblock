@@ -13,6 +13,7 @@ import {
   type MarksheetCoordinateMap,
   type CertificateData
 } from '@/lib/certificate'
+import { publishIssuanceNotification } from '@/lib/notifications'
 
 export async function POST(req: Request) {
   try {
@@ -156,15 +157,15 @@ export async function POST(req: Request) {
     // (verification URL uses the marksheet data hash)
     // ============================================================
     const extractedData = {
-      name: student_name,
-      prn_no,
-      serial_no: serial_no || '',
-      examination: examination || '',
-      branch: branch || '',
-      session: session_name || '',
-      sgpi: sgpi || '',
-      cgpi: cgpi || '',
-      remarks: remarks || 'SUCCESSFUL',
+      name: String(student_name || ''),
+      prn_no: String(prn_no || ''),
+      serial_no: String(serial_no || ''),
+      examination: String(examination || ''),
+      branch: String(branch || ''),
+      session: String(session_name || ''),
+      sgpi: String(sgpi || ''),
+      cgpi: String(cgpi || ''),
+      remarks: String(remarks || 'SUCCESSFUL'),
       totals: {
         credits: totalCredits.toString(),
         gp: totalGp.toString(),
@@ -407,6 +408,29 @@ export async function POST(req: Request) {
     // @ts-ignore
     const newId = result && result[0] ? result[0].id : null
     console.log('\n[Database] ✓ Saved to marksheets table with ID:', newId)
+
+    // ============================================================
+    // PART 9: SEND EMAIL NOTIFICATION DIRECTLY VIA SES
+    // (fire-and-forget: any failure does NOT affect the issuance response)
+    // ============================================================
+    publishIssuanceNotification({
+      studentName:     String(student_name || ''),
+      studentEmail:    String(student_email || ''),
+      prnNo:           String(prn_no || ''),
+      serialNo:        String(serial_no || ''),
+      examination:     String(examination || ''),
+      branch:          String(branch || ''),
+      session:         String(session_name || ''),
+      sgpi:            String(sgpi || ''),
+      cgpi:            String(cgpi || ''),
+      remarks:         String(remarks || 'SUCCESSFUL'),
+      marksheetUrl:    marksheetPdfUrl,
+      certificateUrl:  certPdfUrl,
+      certificateId:   certificateData.certificate_id,
+      verificationUrl: verificationUrl,
+      issueDate:       new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
+    }).catch(e => console.error('[Notify] Email notification failed:', e))
+
     console.log('[Issue] === DUAL ISSUANCE COMPLETE ===\n')
 
     return NextResponse.json({

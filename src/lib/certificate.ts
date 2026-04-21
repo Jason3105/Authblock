@@ -55,7 +55,9 @@ export function generateCertificateId(prn: string, session: string): string {
   const timestamp = Date.now()
   const randomPart = crypto.randomBytes(4).toString('hex').toUpperCase()
   const prnPart = prn.substring(prn.length - 4)
-  const sessionPart = session.replace(/[^0-9]/g, '').substring(0, 4)
+  // Coerce to string to handle cases where session is a number (e.g. from Excel)
+  const sessionStr = String(session ?? '')
+  const sessionPart = sessionStr.replace(/[^0-9]/g, '').substring(0, 4)
 
   return `ABC-${sessionPart}-${prnPart}-${randomPart}-${timestamp.toString(36).toUpperCase()}`
 }

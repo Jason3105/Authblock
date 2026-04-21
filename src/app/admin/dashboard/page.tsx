@@ -1,18 +1,41 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { FileText, Shield, Users, ArrowRight } from 'lucide-react'
+import { FileText, Shield, Users, ArrowRight, Loader2 } from 'lucide-react'
 import AdminShell, { type AdminRecord } from '@/components/admin/AdminShell'
 
 function DashboardContent({ admin }: { admin: AdminRecord }) {
   const isSuperAdmin = admin.admin_type === 'superadmin'
+  const [statsData, setStatsData] = useState({
+    certificatesIssued: 0,
+    verifiedOnChain: 0,
+    adminUsers: 0
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const res = await fetch('/api/admin/dashboard-stats')
+        const data = await res.json()
+        if (data.success) {
+          setStatsData(data.stats)
+        }
+      } catch (err) {
+        console.error('Failed to fetch dashboard stats:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchStats()
+  }, [])
 
   const stats = [
-    { label: 'Certificates Issued', value: '—', icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Verified On-Chain',   value: '—', icon: Shield,   color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Admin Users',         value: '—', icon: Users,    color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: 'Certificates Issued', value: statsData.certificatesIssued, icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Verified On-Chain',   value: statsData.verifiedOnChain, icon: Shield,   color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Admin Users',         value: statsData.adminUsers, icon: Users,    color: 'text-purple-600', bg: 'bg-purple-50' },
   ]
 
   return (
@@ -58,7 +81,9 @@ function DashboardContent({ admin }: { admin: AdminRecord }) {
             <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center mb-4`}>
               <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
-            <div className="text-2xl font-bold text-slate-900 mb-0.5">{stat.value}</div>
+            <div className="text-2xl font-bold text-slate-900 mb-0.5">
+              {loading ? <Loader2 className="w-5 h-5 animate-spin text-slate-300" /> : stat.value}
+            </div>
             <div className="text-sm text-slate-500">{stat.label}</div>
           </div>
         ))}
@@ -83,30 +108,39 @@ function DashboardContent({ admin }: { admin: AdminRecord }) {
               <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 ml-auto shrink-0 transition-colors" />
             </Link>
 
-            <div className="flex items-center gap-3 p-4 rounded-xl border border-dashed border-slate-200 opacity-50 cursor-not-allowed">
+            <Link
+              href="/admin/marksheets"
+              className="flex items-center gap-3 p-4 rounded-xl border border-slate-200 hover:border-blue-200 hover:bg-blue-50/40 transition-all group"
+            >
               <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
                 <FileText className="w-5 h-5 text-blue-500" />
               </div>
-              <div>
-                <div className="text-sm font-semibold text-slate-800">Issue Certificate</div>
-                <div className="text-xs text-slate-400">Coming soon</div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-slate-800">Issue Marksheets</div>
+                <div className="text-xs text-slate-400">Issue blockchain-anchored credentials</div>
               </div>
-            </div>
+              <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500 ml-auto shrink-0 transition-colors" />
+            </Link>
           </div>
         </div>
       )}
 
-      {/* ── Coming soon ── */}
+      {/* ── Additional Views ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-10 text-center flex flex-col items-center justify-center">
-          <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mb-4">
-            <FileText className="w-7 h-7 text-blue-400" />
+        <Link 
+          href="/admin/marksheets"
+          className="bg-white rounded-2xl border border-slate-200 p-6 flex items-center gap-4 hover:border-blue-200 transition-colors group"
+        >
+          <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center shrink-0">
+            <FileText className="w-7 h-7 text-blue-400 group-hover:text-blue-600 transition-colors" />
           </div>
-          <h3 className="text-base font-bold text-slate-900 mb-1">Marksheet Management</h3>
-          <p className="text-sm text-slate-500 max-w-xs">
-            Blockchain-anchored marksheet issuance is under development.
-          </p>
-        </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-900 mb-1">Marksheet Management</h3>
+            <p className="text-sm text-slate-500 max-w-xs">
+              View and manage all blockchain-anchored marksheets issued by the college.
+            </p>
+          </div>
+        </Link>
       </div>
     </div>
   )

@@ -14,14 +14,12 @@ const navLinks = [
   { name: 'ABOUT', href: '/#about', dot: '◆', dotColor: 'text-blue-500' },
 ]
 
-// Props kept for backward-compat but ignored — session is always self-fetched.
 export function Navbar({ isLoggedIn: _isLoggedIn, user: _user }: { isLoggedIn?: boolean, user?: any }) {
   const [isScrolled, setIsScrolled] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [sessionLoaded, setSessionLoaded] = useState(false)
 
-  // Fetch real session state from the HTTP-only cookie via API
   useEffect(() => {
     fetch('/api/auth/session')
       .then(r => r.json())
@@ -39,8 +37,6 @@ export function Navbar({ isLoggedIn: _isLoggedIn, user: _user }: { isLoggedIn?: 
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
-
-  const isLoggedIn = !!user
 
   return (
     <nav
@@ -77,7 +73,6 @@ export function Navbar({ isLoggedIn: _isLoggedIn, user: _user }: { isLoggedIn?: 
 
           {/* CTA / Auth Area */}
           <div className="hidden xl:flex items-center">
-            {/* Show placeholder while session loads to avoid flash */}
             {!sessionLoaded ? (
               <div className="w-24 h-8 bg-slate-100 animate-pulse rounded-full" />
             ) : user ? (
