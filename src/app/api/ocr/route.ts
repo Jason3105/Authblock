@@ -8,42 +8,33 @@ const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || ''
 // Maximum file size for OCR.space (1MB = 1024 KB, use 900KB for safety)
 const MAX_FILE_SIZE_KB = 900
 
-async function enhanceAndCompressForOcr(buffer: Buffer): Promise<{ base64: string; mimeType: string }> {
+async function enhanceAndCompressForOcr(buffer: Buffer): Promise<{ base64: string; mimeType: string; width: number; height: number }> {
   try {
-    // Step 1: Enhance image for OCR (do this once, before compression attempts)
     const image = await Jimp.read(buffer)
     console.log(`[OCR API] Original dimensions: ${image.width}x${image.height}`)
 
-    // Convert to grayscale (better for OCR)
-    image.greyscale()
-
-    // Increase contrast for better text recognition
-    image.contrast(0.3)
-
-    // Normalize brightness
-    image.normalize()
-
-    const originalWidth = image.width
+    const originalWidth  = image.width
     const originalHeight = image.height
 
-    let quality = 90 // Start with higher quality
+    image.greyscale()
+    image.contrast(0.3)
+    image.normalize()
+
+    let quality = 90
     let scale = 1.0
     let compressedBase64 = ''
+    let finalWidth = originalWidth
+    let finalHeight = originalHeight
 
-    // Iteratively reduce size until under limit
     for (let attempt = 0; attempt < 8; attempt++) {
-      const targetWidth = Math.round(originalWidth * scale)
+      const targetWidth  = Math.round(originalWidth * scale)
       const targetHeight = Math.round(originalHeight * scale)
+      const processedImage = image.clone()
 
-      // Clone the enhanced image for this attempt
-      let processedImage = image.clone()
-
-      // Resize if needed (use BICUBIC for better quality)
       if (scale < 1.0) {
         processedImage.resize({ w: targetWidth, h: targetHeight })
       }
 
-      // Convert to JPEG with quality setting
       const compressedBuffer = await processedImage.getBuffer('image/jpeg', { quality })
       compressedBase64 = compressedBuffer.toString('base64')
 
@@ -51,27 +42,148 @@ async function enhanceAndCompressForOcr(buffer: Buffer): Promise<{ base64: strin
       console.log(`[OCR API] Compression attempt ${attempt + 1}: ${Math.round(sizeKB)}KB (${targetWidth}x${targetHeight}, q=${quality})`)
 
       if (sizeKB <= MAX_FILE_SIZE_KB) {
+        finalWidth  = targetWidth
+        finalHeight = targetHeight
         console.log(`[OCR API] Final: ${Math.round(sizeKB)}KB (${targetWidth}x${targetHeight})`)
-        return { base64: compressedBase64, mimeType: 'image/jpeg' }
+        return { base64: compressedBase64, mimeType: 'image/jpeg', width: finalWidth, height: finalHeight }
       }
 
-      // Reduce scale first (more important to keep quality than size)
       if (scale > 0.5) {
         scale -= 0.1
       } else if (quality > 70) {
         quality -= 10
       } else {
-        scale = Math.max(0.3, scale - 0.05)
+        scale   = Math.max(0.3, scale - 0.05)
         quality = Math.max(60, quality - 5)
       }
     }
 
-    console.log('[OCR API] Using best compression result')
-    return { base64: compressedBase64, mimeType: 'image/jpeg' }
+    return { base64: compressedBase64, mimeType: 'image/jpeg', width: originalWidth, height: originalHeight }
   } catch (e: any) {
     console.error('[OCR API] Enhancement/compression failed:', e.message)
-    return { base64: buffer.toString('base64'), mimeType: 'image/png' }
+    const image = await Jimp.read(buffer)
+    return { base64: buffer.toString('base64'), mimeType: 'image/png', width: image.width, height: image.height }
   }
+}
+
+// ─── Coordinate-based word extraction ─────────────────────────────────────────
+// The marksheet PDF uses fixed coordinates (x, y in PDF-space).
+// PDF page size is 595.28 x 841.89 pt.
+// The image returned from OCR.space has word bounding boxes in pixels.
+// We map from PDF-pt coordinates → image pixel coordinates using the known
+// image dimensions, then extract words whose bounding box overlaps the target region.
+
+interface OcrWord {
+  text: string
+  left: number   // px from left edge of image
+  top: number    // px from top edge of image
+  width: number
+  height: number
+}
+
+/**
+ * Extract all words from OCR.space overlay response.
+ */
+function extractOcrWords(ocrResponse: any): OcrWord[] {
+  const words: OcrWord[] = []
+  const lines = ocrResponse?.ParsedResults?.[0]?.TextOverlay?.Lines || []
+  for (const line of lines) {
+    for (const word of line.Words || []) {
+      if (word.WordText && word.WordText.trim()) {
+        words.push({
+          text:   word.WordText.trim(),
+          left:   Number(word.Left),
+          top:    Number(word.Top),
+          width:  Number(word.Width),
+          height: Number(word.Height)
+        })
+      }
+    }
+  }
+  return words
+}
+
+/**
+ * PDF coordinates use bottom-left origin; images use top-left origin.
+ * Given a PDF point (px, py) and the image pixel dimensions, compute the
+ * equivalent pixel coordinate.
+ *
+ * PDF page: 595.28 w × 841.89 h (A4)
+ *   x: left-to-right (same direction as image)
+ *   y: bottom-to-top (INVERTED vs image)
+ */
+function pdfToPixel(
+  pdfX: number,
+  pdfY: number,
+  imgWidth: number,
+  imgHeight: number
+): { px: number; py: number } {
+  const PDF_W = 595.28
+  const PDF_H = 841.89
+  return {
+    px: (pdfX / PDF_W) * imgWidth,
+    py: ((PDF_H - pdfY) / PDF_H) * imgHeight   // flip Y axis
+  }
+}
+
+/**
+ * Find all OCR words within a pixel rectangle (with generous padding).
+ * Returns the concatenated text of all matching words.
+ */
+function wordsInRegion(
+  words: OcrWord[],
+  cx: number,    // centre-x in pixels
+  cy: number,    // centre-y in pixels
+  halfW = 120,   // horizontal search radius in pixels
+  halfH = 25     // vertical search radius in pixels
+): string {
+  return words
+    .filter(w => {
+      const wx = w.left + w.width  / 2
+      const wy = w.top  + w.height / 2
+      return Math.abs(wx - cx) <= halfW && Math.abs(wy - cy) <= halfH
+    })
+    .sort((a, b) => a.left - b.left)
+    .map(w => w.text)
+    .join(' ')
+    .trim()
+}
+
+/**
+ * Use the ocr_coordinate_map (field → {x, y} in PDF pts) together with the
+ * OCR word overlay to extract each field value with spatial precision.
+ *
+ * Fields in the ocr_coordinate_map:
+ *   { field, x, y, value }  — value is the originally-drawn text (ground truth)
+ *   x, y are PDF coordinates
+ */
+function extractByCoordinates(
+  ocrWords: OcrWord[],
+  ocrCoordinateMap: Array<{ field: string; x: number; y: number; value: string }>,
+  imgWidth: number,
+  imgHeight: number
+): Record<string, string> {
+  const result: Record<string, string> = {}
+
+  for (const entry of ocrCoordinateMap) {
+    const { field, x, y } = entry
+    const { px, py } = pdfToPixel(x, y, imgWidth, imgHeight)
+
+    // Wider horizontal search for longer text fields; narrower for numbers
+    const isNumeric = ['SGPI', 'CGPI'].includes(field)
+    const halfW = isNumeric ? 60 : 200
+    const halfH = 20
+
+    const extracted = wordsInRegion(ocrWords, px, py, halfW, halfH)
+    if (extracted) {
+      result[field] = extracted
+      console.log(`[OCR Coord] "${field}" @ PDF(${x},${y}) → px(${Math.round(px)},${Math.round(py)}): "${extracted}"`)
+    } else {
+      console.log(`[OCR Coord] "${field}" @ PDF(${x},${y}) → px(${Math.round(px)},${Math.round(py)}): NOT FOUND`)
+    }
+  }
+
+  return result
 }
 
 export async function POST(request: NextRequest) {
@@ -80,48 +192,61 @@ export async function POST(request: NextRequest) {
 
   try {
     const formData = await request.formData()
-    const file = formData.get('file') as File
+    const file     = formData.get('file') as File
+
+    // Optional: ocr_coordinate_map passed as JSON string for coordinate-based extraction
+    const ocrMapStr = formData.get('ocr_coordinate_map') as string | null
+    const ocrCoordinateMap: Array<{ field: string; x: number; y: number; value: string }> =
+      ocrMapStr ? JSON.parse(ocrMapStr) : []
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
     console.log('[OCR API] File received:', file.name, file.size, 'bytes')
+    if (ocrCoordinateMap.length > 0) {
+      console.log('[OCR API] Coordinate map provided:', ocrCoordinateMap.length, 'fields')
+    }
 
-    // Convert file to buffer
-    const bytes = await file.arrayBuffer()
+    const bytes  = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
-    let base64 = buffer.toString('base64')
-    let mimeType = file.type || 'image/png'
 
-    // Check if file needs compression for OCR.space
-    const fileSizeKB = (base64.length * 3) / 4 / 1024
+    const fileSizeKB = buffer.length / 1024
     console.log('[OCR API] Original file size:', Math.round(fileSizeKB), 'KB')
 
-    // Enhance and compress image if needed (only for images, not PDFs)
+    let base64   = ''
+    let mimeType = file.type || 'image/png'
+    let imgWidth = 0
+    let imgHeight = 0
+
     const needsProcessing = !file.type.includes('pdf')
     if (needsProcessing) {
       console.log('[OCR API] Enhancing image for OCR...')
       const processed = await enhanceAndCompressForOcr(buffer)
-      base64 = processed.base64
-      mimeType = processed.mimeType
+      base64    = processed.base64
+      mimeType  = processed.mimeType
+      imgWidth  = processed.width
+      imgHeight = processed.height
+    } else {
+      base64 = buffer.toString('base64')
     }
 
     console.log('[OCR API] Final base64 length:', base64.length)
 
-    let ocrText = ''
-    let ocrProvider = ''
+    let ocrText      = ''
+    let ocrProvider  = ''
     let errorDetails = ''
+    let ocrWords: OcrWord[] = []
+    let rawResponse: any = null
 
-    // Use OCR.space API (primary OCR service)
+    // ── OCR.space (primary) ─────────────────────────────────────────────────
     if (OCR_SPACE_API_KEY) {
       console.log('[OCR API] Trying OCR.space API...')
       try {
-        // OCR.space requires URL-encoded form data, not multipart
         const ocrParams = new URLSearchParams()
         ocrParams.append('base64Image', `data:${mimeType};base64,${base64}`)
         ocrParams.append('language', 'eng')
-        ocrParams.append('isOverlayRequired', 'false')
+        ocrParams.append('isOverlayRequired', 'true')   // ← MUST be true for word bounding boxes
         ocrParams.append('detectOrientation', 'true')
         ocrParams.append('scale', 'true')
         ocrParams.append('OCREngine', '2')
@@ -136,22 +261,21 @@ export async function POST(request: NextRequest) {
         })
 
         const data = await response.json()
+        rawResponse = data
         console.log('[OCR API] OCR.space response status:', response.status)
-        console.log('[OCR API] OCR.space response:', JSON.stringify(data).substring(0, 1000))
 
         if (data.IsErroredOnProcessing) {
           console.error('[OCR API] OCR.space processing error:', data.ErrorMessage)
           errorDetails += `OCR.space: ${data.ErrorMessage?.[0] || 'Processing error'}`
         } else if (data.ParsedResults?.[0]?.ParsedText) {
-          ocrText = data.ParsedResults[0].ParsedText
+          ocrText     = data.ParsedResults[0].ParsedText
           ocrProvider = 'ocrspace'
-          console.log('[OCR API] OCR.space success! Text length:', ocrText.length)
+          ocrWords    = extractOcrWords(data)
+          console.log('[OCR API] OCR.space success! Text length:', ocrText.length, '| Words:', ocrWords.length)
           console.log('[OCR API] Raw OCR text (full):\n' + ocrText)
-        } else if (data.OCRExitCode !== 1) {
+        } else {
           console.log('[OCR API] OCR.space exit code:', data.OCRExitCode)
           errorDetails += `OCR.space exit code: ${data.OCRExitCode}`
-        } else {
-          console.log('[OCR API] OCR.space: No text found')
         }
       } catch (e: any) {
         console.error('[OCR API] OCR.space fetch error:', e.message)
@@ -159,58 +283,81 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fallback to Tesseract.js if OCR.space failed or no API key
+    // ── Tesseract fallback ──────────────────────────────────────────────────
     if (!ocrText) {
       console.log('[OCR API] Trying Tesseract.js as fallback...')
       try {
         const worker = await createWorker('eng')
-
-        // Configure Tesseract for better accuracy
-        await worker.setParameters({
-          tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .:/-'
-        })
-
-        // Set page segmentation mode
-        await worker.setParameters({
-          tessedit_pageseg_mode: PSM.SINGLE_BLOCK
-        })
-
-        // Convert base64 back to buffer for Tesseract
+        await worker.setParameters({ tessedit_pageseg_mode: PSM.SINGLE_BLOCK })
         const imageBuffer = Buffer.from(base64, 'base64')
-
         const { data: { text } } = await worker.recognize(imageBuffer)
         await worker.terminate()
-
         if (text && text.trim()) {
-          ocrText = text.trim()
+          ocrText     = text.trim()
           ocrProvider = 'tesseract'
           console.log('[OCR API] Tesseract success! Text length:', ocrText.length)
-          console.log('[OCR API] Raw OCR text:\n' + ocrText.substring(0, 2000))
         } else {
-          console.log('[OCR API] Tesseract: No text found')
           errorDetails += (errorDetails ? '; ' : '') + 'Tesseract: No text extracted'
         }
       } catch (e: any) {
-        console.error('[OCR API] Tesseract error:', e.message)
         errorDetails += (errorDetails ? '; ' : '') + `Tesseract error: ${e.message}`
       }
     }
 
     if (!ocrText) {
-      const errorMsg = errorDetails || 'All OCR methods failed'
-      console.error('[OCR API] Final error:', errorMsg)
-      return NextResponse.json({ error: errorMsg }, { status: 500 })
+      return NextResponse.json({ error: errorDetails || 'All OCR methods failed' }, { status: 500 })
     }
 
-    // Parse the OCR text to extract certificate/marksheet fields
-    const extractedData = parseCertificateText(ocrText)
-    console.log('[OCR API] Extraction complete. Fields found:', Object.keys(extractedData).filter(k => extractedData[k as keyof typeof extractedData]).length)
+    // ── Extraction ──────────────────────────────────────────────────────────
+    // 1. Coordinate-based extraction (if map provided + word overlay available)
+    let coordinateExtracted: Record<string, string> = {}
+    if (ocrCoordinateMap.length > 0 && ocrWords.length > 0 && imgWidth > 0 && imgHeight > 0) {
+      console.log('[OCR API] Running coordinate-based extraction...')
+      coordinateExtracted = extractByCoordinates(ocrWords, ocrCoordinateMap, imgWidth, imgHeight)
+    }
+
+    // 2. Regex-based extraction on full text (fallback / supplement)
+    const regexExtracted = parseCertificateText(ocrText)
+
+    // 3. Merge: coordinate-based wins over regex where available
+    const fieldMap: Record<string, keyof typeof regexExtracted> = {
+      'Full Name':   'name',
+      'PRN Number':  'prn_no',
+      'Serial No.':  'serial_no',
+      'Examination': 'examination',
+      'Branch':      'branch',
+      'Session':     'session',
+      'SGPI':        'sgpi',
+      'CGPI':        'cgpi',
+      'Remarks':     'remarks'
+    }
+
+    const extractedData = { ...regexExtracted }
+    for (const [coordField, dataKey] of Object.entries(fieldMap)) {
+      const coordVal = coordinateExtracted[coordField]
+      if (coordVal && coordVal.length > 0) {
+        ;(extractedData as any)[dataKey] = coordVal
+        console.log(`[OCR Merge] "${dataKey}" overridden by coordinate extraction: "${coordVal}"`)
+      }
+    }
+
+    // Apply normalization to coordinate-extracted values too
+    if (extractedData.examination) extractedData.examination = normalizeExamination(extractedData.examination)
+    if (extractedData.remarks)     extractedData.remarks     = normalizeRemarks(extractedData.remarks)
+    if (extractedData.name)        extractedData.name        = normalizeName(extractedData.name)
+    if (extractedData.sgpi)        extractedData.sgpi        = normalizeSGPI(extractedData.sgpi)
+    if (extractedData.cgpi)        extractedData.cgpi        = normalizeCGPI(extractedData.cgpi)
+
+    console.log('[OCR API] Extraction complete. Fields found:',
+      Object.keys(extractedData).filter(k => (extractedData as any)[k]).length)
 
     return NextResponse.json({
       success: true,
       provider: ocrProvider,
       rawText: ocrText,
-      extractedData
+      extractedData,
+      coordinateExtracted,
+      wordCount: ocrWords.length
     })
 
   } catch (error: any) {
@@ -219,13 +366,76 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// ─── Normalization helpers (exported so merge step can reuse) ──────────────
+
+function normalizeName(text: string): string {
+  return text
+    .replace(/\s+(?:PRN|Number|Num|Der|De|Branci|Branch|Sea|Serial|No|Id|Cert|Certificate|Program|Programme)[a-z]*$/i, '')
+    .replace(/\s+(?:PRN|Number|Num|Der|De|Branci|Branch|Sea|Serial|No|Id|Cert|Certificate|Program|Programme)[a-z]*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizeExamination(text: string): string {
+  return text
+    .replace(/Sem-?lV\b/gi, 'Sem-IV')
+    .replace(/Sem-?l\b/gi,  'Sem-I')
+    .replace(/Sem-?ll\b/gi, 'Sem-II')
+    .replace(/Sem-?lll\b/gi,'Sem-III')
+    .replace(/Sem-?lX\b/gi, 'Sem-IX')
+    .replace(/Sem-?Vl\b/gi, 'Sem-VI')
+    .replace(/Sem-?Vll\b/gi,'Sem-VII')
+    .replace(/Sem-?Vlll\b/gi,'Sem-VIII')
+    // Fix 'Sem-v' → 'Sem-V' (lowercase v is common OCR error for capital V)
+    .replace(/Sem-v\b/g,    'Sem-V')
+    .replace(/Sem-vi\b/gi,  'Sem-VI')
+    .replace(/Enginering/gi,  'Engineering')
+    .replace(/Engneering/gi,  'Engineering')
+    .replace(/Engeering/gi,   'Engineering')
+    .replace(/Engineeing/gi,  'Engineering')
+    .replace(/Bacheior/gi,    'Bachelor')
+    .replace(/Bachlor/gi,     'Bachelor')
+    .trim()
+}
+
+function normalizeRemarks(text: string): string {
+  return text
+    .replace(/SUCCESSFULR?$/gi,  'SUCCESSFUL')
+    .replace(/SUCCESSFULL$/gi,   'SUCCESSFUL')
+    .replace(/SUCCESFULL?/gi,    'SUCCESSFUL')
+    .replace(/SUCESSFULL?/gi,    'SUCCESSFUL')
+    .replace(/SUCCESSUL/gi,      'SUCCESSFUL')
+    .replace(/SUCCESSL?$/gi,     'SUCCESS')
+    .replace(/PASSEDD?$/gi,      'PASSED')
+    .replace(/FAILLED?$/gi,      'FAILED')
+    .replace(/^PASS$/gi,         'PASSED')
+    .replace(/^FAIL$/gi,         'FAILED')
+    .trim()
+}
+
+/**
+ * Clean up SGPI value — OCR sometimes produces "SGP/ 8.75" or "SGPI8.75" or "8.75"
+ * We want just the numeric part.
+ */
+function normalizeSGPI(text: string): string {
+  // Strip non-numeric prefix (e.g. "SGP/ ", "SGPI ", "S.G.P.I. ")
+  const num = text.replace(/^[A-Za-z\s./]+/, '').trim()
+  return /^\d+\.\d+$/.test(num) ? num : text.trim()
+}
+
+function normalizeCGPI(text: string): string {
+  const num = text.replace(/^[A-Za-z\s./]+/, '').trim()
+  return /^\d+\.\d+$/.test(num) ? num : text.trim()
+}
+
+// ─── Regex-based extraction (fallback) ────────────────────────────────────
+
 function parseCertificateText(text: string) {
-  // Normalize text
   const normalized = text
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
-    .replace(/\s+/g, ' ') // Normalize whitespace
-    .replace(/\n\s+/g, '\n') // Clean line starts
+    .replace(/\s+/g, ' ')
+    .replace(/\n\s+/g, '\n')
     .trim()
 
   console.log('[OCR Parse] Normalized text length:', normalized.length)
@@ -242,110 +452,71 @@ function parseCertificateText(text: string) {
     return fallback
   }
 
-  // Extract certificate ID (for Authblock certificates)
+  // Certificate ID
   const certificateIdRaw = extract([
     /Certificate\s*ID\s*:?\s*(ABC-\d{4}-\d{4}-[A-Z0-9]{8}-[A-Z0-9]{8})/i,
     /(ABC-\d{4}-\d{4}-[A-Z0-9]{8}-[A-Z0-9]{8})/i,
     /ID\s*:?\s*(ABC-[A-Z0-9-]+)/i
   ])
+  const certificate_id = certificateIdRaw
+    ? certificateIdRaw.replace(/O/g, '0')
+    : ''
 
-  // Normalize certificate ID - fix OCR confusion between 0 (zero) and O (letter)
-  const normalizeCertificateId = (text: string): string => {
-    // Replace letter O with digit 0 in the alphanumeric parts (after the dashes)
-    // ABC-2025-8411-[should be all digits/uppercase letters]
-    return text.replace(/O/g, '0')  // Convert O to 0
-  }
-
-  const certificate_id = certificateIdRaw ? normalizeCertificateId(certificateIdRaw) : ''
-
-  // Extract name - handle label-invisible OCR (gray labels wash out after grayscale+contrast)
+  // ── Name ────────────────────────────────────────────────────────────────
+  // The traditional marksheet OCR layout (with background watermark text) causes
+  // the name to appear AFTER all subject codes in the raw text, not near "Name:".
+  // We use multiple fallback strategies.
   const nameRaw = extract([
-    // --- Authblock certificate ---
-    // When 'Full Name Serial No.' labels ARE visible in OCR:
+    // Authblock cert - label visible
     /Full\s+Name\s+Serial\s+No\.\s+([A-Za-z]+(?:\s+[A-Za-z]+)*?)\s+SN-\d/i,
     /Full\s+Name\s+(.+?)(?=\s+SN-|\s+\d{16})/i,
-    // When gray labels are INVISIBLE to OCR: name appears right after section header
-    // Text: '...STUDENT INFORMATION Rocky Johnson SN-0015 PRN...'
     /STUDENT\s+INFORMATION\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+?)(?=\s+SN-|\s+\d{16}|\s+PRN\s+Number)/i,
-    // Name appears just before the serial number SN-XXXX
     /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+?)\s+SN-\d{3,}/i,
-    // --- Legacy marksheet ---
-    /(?:Student\s+)?Name\s*:?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+PRN|\s+Certificate|\s+Serial|\s*$)/i,
-    /Name\s*:?\s*([A-Z][A-Za-z\s]+?)(?=\s*PRN|Roll|Examination|Branch)/i
+    // Traditional marksheet: name follows "Name:" label
+    /(?:Student\s+)?Name\s*:?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+PRN|\\s+Certificate|\s+Serial|\s*$)/i,
+    /Name\s*:?\s*([A-Z][A-Za-z\s]+?)(?=\s*PRN|Roll|Examination|Branch)/i,
+    // Traditional marksheet: name appears after subject code block before "Bachelor"
+    // Pattern: "CSM401 <Name> Bachelor of Engineering"
+    /CSM\d+\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+?)\s+Bachelor/i,
+    // Name after last subject code (any CSX/CSL/CSC pattern)
+    /CS[A-Z]\d+\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+?)\s+Bachelor/i,
+    // Generic fallback: "Jake Sull" or similar near "Bachelor of Engineering"
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+Bachelor\s+of\s+Engineering/i
   ])
-
-  // Normalize common OCR errors in name field
-  const normalizeName = (text: string): string => {
-    return text
-      // Fix common OCR character confusions
-      .replace(/\bRaina\b/gi, 'Raina')
-      .replace(/\bSamay\b/gi, 'Samay')
-      .replace(/\bArjun\b/gi, 'Arjun')
-      .replace(/\bSingh\b/gi, 'Singh')
-      // Clean trailing OCR garbage (labels that washed out or got misread)
-      .replace(/\s+(?:PRN|Number|Num|Der|De|Branci|Branch|Sea|Serial|No|Id|Cert|Certificate|Program|Programme)[a-z]*$/i, '')
-      .replace(/\s+(?:PRN|Number|Num|Der|De|Branci|Branch|Sea|Serial|No|Id|Cert|Certificate|Program|Programme)[a-z]*$/i, '') // Run twice for compound labels
-      // Remove extra spaces and clean up
-      .replace(/\s+/g, ' ')
-      .trim()
-  }
 
   const name = nameRaw ? normalizeName(nameRaw) : ''
 
-  // Extract PRN - enhanced for both formats with tight boundaries
+  // ── PRN ──────────────────────────────────────────────────────────────────
   const prn_no = extract([
-    /PRN\s*:?\s*(\d{16})/i,  // 16 digit PRN
+    /PRN\s*(?:No\.?)?\s*:?\s*(\d{16})/i,
     /Registration\s*(?:No\.?)?\s*:?\s*(\d{16})/i,
     /PRN\s*:?\s*(\d{10,20})/i,
-    /(?:^|\s)(\d{16})(?=\s+|$)/ // Standalone 16 digit number
+    /(?:^|\s)(\d{16})(?=\s|$)/
   ])
 
-  // Extract serial number - enhanced patterns
+  // ── Serial No. ───────────────────────────────────────────────────────────
   const serial_no = extract([
     /Serial\s*(?:No\.?)?\s*:?\s*(SN[-\s]?\d+)/i,
     /(SN[-\s]?\d{3,})/i,
-    /S\.?N\.?\s*:?\s*(\d+)/i,
-    /Serial\s*:?\s*([A-Z0-9-]+)/i
+    /No\.\s*(SN-\d+)/i,
+    /S\.?N\.?\s*:?\s*(\d+)/i
   ])
 
-  // Extract examination - enhanced for certificate format with proper boundaries
+  // ── Examination ──────────────────────────────────────────────────────────
   const examRaw = extract([
-    /Examination\s*:?\s*(Bachelor\s+of\s+Engineering\s+Sem-[IViv]+)/i,
-    /Exam\s*:?\s*(Bachelor\s+of\s+Engineering\s+Sem-[IViv]+)/i,
-    /(Bachelor\s+of\s+Engineering\s+Sem-[IViv]+)/i,
-    /(BE\s+Sem-[IViv]+)/i
+    /Examination\s*:?\s*(Bachelor\s+of\s+Engineering\s+Sem-[IVXivx]+)/i,
+    /Exam\s*:?\s*(Bachelor\s+of\s+Engineering\s+Sem-[IVXivx]+)/i,
+    /(Bachelor\s+of\s+Engineering\s+Sem-[IVXivx]+)/i,
+    /(BE\s+Sem-[IVXivx]+)/i,
+    // OCR often outputs 'Sem-v' (lowercase) for 'Sem-V'
+    /(Bachelor\s+of\s+Engineering\s+Sem-[a-zA-Z]+)/i
   ])
-
-  // Normalize common OCR errors in examination field
-  const normalizeExamination = (text: string): string => {
-    return text
-      // Fix Roman numeral OCR errors: lV -> IV, ll -> II, lll -> III
-      .replace(/Sem-?lV\b/gi, 'Sem-IV')
-      .replace(/Sem-?l\b/gi, 'Sem-I')
-      .replace(/Sem-?ll\b/gi, 'Sem-II')
-      .replace(/Sem-?lll\b/gi, 'Sem-III')
-      .replace(/Sem-?lX\b/gi, 'Sem-IX')
-      .replace(/Sem-?Vl\b/gi, 'Sem-VI')
-      .replace(/Sem-?Vll\b/gi, 'Sem-VII')
-      .replace(/Sem-?Vlll\b/gi, 'Sem-VIII')
-      // Fix common word OCR errors
-      .replace(/Enginering/gi, 'Engineering')  // Missing 'e'
-      .replace(/Engneering/gi, 'Engineering')  // Transposed letters
-      .replace(/Engeering/gi, 'Engineering')   // Missing 'in'
-      .replace(/Engineeing/gi, 'Engineering')  // Missing 'r'
-      .replace(/Bacheior/gi, 'Bachelor')       // OCR i/l confusion
-      .replace(/Bachlor/gi, 'Bachelor')        // Missing 'e'
-      .trim()
-  }
-
   const examination = examRaw ? normalizeExamination(examRaw) : ''
 
-  // Extract branch - enhanced patterns with better boundaries
+  // ── Branch ───────────────────────────────────────────────────────────────
   const branch = extract([
     /Branch\s*:?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+Serial|\s+Session|Examination|SGPI|ACADEMIC|$)/i,
     /Programme\s*:?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+Session|Serial|$)/i,
-    /Course\s*:?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*?)(?=\s+Session|Serial|$)/i,
-    // Specific engineering branches
     /(Computer\s+Engineering)(?=\s|$)/i,
     /(Mechanical\s+Engineering)(?=\s|$)/i,
     /(Electrical\s+Engineering)(?=\s|$)/i,
@@ -354,104 +525,78 @@ function parseCertificateText(text: string) {
     /(Electronics\s+(?:and\s+)?Communication)(?=\s|$)/i
   ])
 
-  // Extract session - enhanced for various formats with tight boundaries
+  // ── Session ──────────────────────────────────────────────────────────────
   const session = extract([
-    // NEW Authblock cert: 'Sem-V June-2025 SGPI' — session follows examination text
     /Sem-[IVX]+\s+((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{4})/i,
-    // Month-year right before SGPI label
     /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{4})(?=\s+SGPI)/i,
-    // Standard 'Session: June-2025' format
     /Session\s*:?\s*([A-Z][a-z]+-\d{4})/i,
-    // Month-year pair with HYPHEN strictly (prevents catching 'March 2026' from issue date)
-    /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{4})/i,
-    /Semester\s*:?\s*([A-Z][a-z]+-\d{4})/i
+    /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*-\d{4})/i
   ])
 
-  // Extract SGPI/SGPA
-  // NEW Authblock cert layout (post-normalization), labels row + values row:
-  //   '...SGPI CGPI Remark 9.20 9.10 SUCCESSFUL...'  (labels visible)
-  //   '...SGPI CGPI 9.20 9.10 SUCCESSFUL...'          (Remark label washed out)
-  //   '...9.20 9.10 SUCCESSFUL...'                     (all labels washed out)
-  const sgpi = extract([
-    // Labels + Remark visible:
+  // ── SGPI ─────────────────────────────────────────────────────────────────
+  // OCR frequently produces "SGP/ 8.75" (slash for I), "SGPY 8.75" (Y for I),
+  // "SGPI8.75" (no space), or "8.75 8.88 SUCCESSFUL" (no labels at all).
+  const sgpiRaw = extract([
+    // Primary: "SGPY 8.75" / "SGPI 8.75" / "SGP/ 8.75" — Y, I, or / as last char
+    /SG(?:P[IY\/]?)\s*([0-9]+\.[0-9]+)/i,
+    // After remarks keyword: "SUCCESSFUL SGP/ 8.75 CGP/ 8.88"
+    /(?:SUCCESSFUL|PASS(?:ED)?)\s+S[GC]?P[IY\/]?\s*([0-9]+\.[0-9]+)/i,
+    // Adjacent to Remarks label row
+    /Remarks?\s*\.?\s*\w+\s+S[GC]P[IY\/]?\s*([0-9]+\.[0-9]+)/i,
     /SGPI\s+CGPI\s+Remark\s+([\d.]+)/i,
-    // Remark label washed out:
     /SGPI\s+CGPI\s+([\d.]+)/i,
-    // Direct: SGPI then value (even if on separate line after normalization):
     /SGPI\s+([\d.]+)/i,
-    // No labels at all — first decimal in 'X.XX Y.YY SUCCESSFUL|PASS' pair:
+    // No labels: first decimal before a second decimal followed by result
     /([\d]+\.[\d]+)\s+[\d]+\.[\d]+\s+(?:SUCCESSFUL|SUCCESS|PASS)/i,
-    // Standard colon-separated: 'SGPI: 9.20'
-    /S[GC]PI\s*:?\s*([\d.]+)/i,
-    /S\.?G\.?P\.?I\.?\s*:?\s*([\d.]+)/i
+    /S[GC]P[IY\/]?\s*:?\s*([\d.]+)/i,
+    /S\.?G\.?P\.?[IY\/]?\.?\s*:?\s*([\d.]+)/i
   ])
+  const sgpi = sgpiRaw ? normalizeSGPI(sgpiRaw) : ''
 
-  // Extract CGPI/CGPA
-  const cgpi = extract([
-    // Labels + Remark visible (skip SGPI value to get CGPI):
+  // ── CGPI ─────────────────────────────────────────────────────────────────
+  const cgpiRaw = extract([
+    // Primary: "CGPY 8.88" / "CGPI 8.88" / "CGP/ 8.88" — Y, I, or / as last char
+    /CG(?:P[IY\/]?)\s*([0-9]+\.[0-9]+)/i,
+    // After SGPI value on same line: "SGPY 8.75 CGPY 8.88"
+    /SG(?:P[IY\/]?)\s*[0-9]+\.[0-9]+\s+CG(?:P[IY\/]?)\s*([0-9]+\.[0-9]+)/i,
+    /(?:SUCCESSFUL|PASS(?:ED)?)\s+S[GC]?P[IY\/]?\s*[\d.]+\s+C[GC]?P[IY\/]?\s*([0-9]+\.[0-9]+)/i,
     /SGPI\s+CGPI\s+Remark\s+[\d.]+\s+([\d.]+)/i,
-    // Remark label washed out:
     /SGPI\s+CGPI\s+[\d.]+\s+([\d.]+)/i,
-    // Direct: CGPI then its value:
     /CGPI\s+([\d.]+)/i,
-    // No labels at all — second decimal in 'X.XX Y.YY SUCCESSFUL|PASS' pair:
     /[\d]+\.[\d]+\s+([\d]+\.[\d]+)\s+(?:SUCCESSFUL|SUCCESS|PASS)/i,
-    // Standard colon-separated: 'CGPI: 9.10'
     /CGPI\s*:?\s*([\d.]+(?:\.\d{2})?)/i,
     /CGPA\s*:?\s*([\d.]+(?:\.\d{2})?)/i,
-    /C\.?G\.?P\.?I\.?\s*:?\s*([\d.]+)/i
+    /C\.?G\.?P\.?[IY\/]?\.?\s*:?\s*([\d.]+)/i
   ])
+  const cgpi = cgpiRaw ? normalizeCGPI(cgpiRaw) : ''
 
-  // Extract remarks/result
-  // NEW Authblock cert: label is 'Remark' (no s), value appears two words later in flat text
-  // e.g. 'SGPI CGPI Remark 9.20 9.10 SUCCESSFUL'
+  // ── Remarks ──────────────────────────────────────────────────────────────
+  // OCR text after whitespace collapse is "Remarks Date: SUCCESSFUL".
+  // The Remarks label is immediately followed by "Date" (4 chars) which a generic
+  // label-based pattern incorrectly captures. Always prefer the result keyword.
   const remarksRaw = extract([
-    // Authblock: remark value is the word after SGPI+CGPI numeric values
+    // Highest priority: exact result keyword anywhere in text
+    /(SUCCESSFUL|SUCCESS|PASS(?:ED)?|FAIL(?:ED)?)/i,
+    // SGPI/CGPI labels row fallback
     /SGPI\s+CGPI\s+Remark\s+[\d.]+\s+[\d.]+\s+([A-Z][A-Za-z]+)/i,
-    // Standard label patterns
-    /Remark\s*:?\s*([A-Z][A-Za-z]+)/i,
     /Result\s*:?\s*([A-Z][A-Za-z]+)/i,
-    /Remarks?\s*:?\s*([A-Z][A-Za-z]+)/i,
-    // Standalone keyword fallback
-    /(SUCCESSFUL|SUCCESS|PASS|PASSED|FAIL|FAILED)/i,
-    /Status\s*:?\s*([A-Z][A-Za-z]+)/i
+    // Label-based, but only for long words (>=5 chars) to avoid "Date"
+    /Remark[s]?\s*[.:]?\s*([A-Z]{5,})/i
   ])
-
-  // Normalize common OCR errors in remarks/result field
-  const normalizeRemarks = (text: string): string => {
-    return text
-      // Fix common OCR errors in result words
-      .replace(/SUCCESSFULR?$/gi, 'SUCCESSFUL')   // Remove trailing R
-      .replace(/SUCCESSFULL$/gi, 'SUCCESSFUL')   // Remove double L
-      .replace(/SUCCESFULL?/gi, 'SUCCESSFUL')    // Missing S
-      .replace(/SUCESSFULL?/gi, 'SUCCESSFUL')    // Missing C
-      .replace(/SUCCESSUL/gi, 'SUCCESSFUL')      // Missing F
-      .replace(/SUCCESSL?$/gi, 'SUCCESS')        // Truncated
-      .replace(/PASSEDD?$/gi, 'PASSED')          // Extra D
-      .replace(/FAILLED?$/gi, 'FAILED')          // Extra L
-      .replace(/^PASS$/gi, 'PASSED')             // Standardize to PASSED
-      .replace(/^FAIL$/gi, 'FAILED')             // Standardize to FAILED
-      .trim()
-  }
-
   const remarks = remarksRaw ? normalizeRemarks(remarksRaw) : ''
 
-  // Extract date - enhanced for various formats
+  // ── Date ─────────────────────────────────────────────────────────────────
   const date = extract([
-    // Authblock format: "22 March 2026"
     /Issue\s*Date\s*:?\s*(\d{1,2}\s+[A-Z][a-z]+\s+\d{4})/i,
     /Date\s*:?\s*(\d{1,2}\s+[A-Z][a-z]+\s+\d{4})/i,
-    // Traditional formats
     /Date\s*:?\s*(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})/i,
     /(\d{2}[-\/]\d{2}[-\/]\d{4})/,
-    /(\d{1,2}\s+[A-Z][a-z]+\s+\d{4})/i // e.g., 30 June 2025
+    /(\d{1,2}\s+[A-Z][a-z]+\s+\d{4})/i
   ])
 
-  // Determine document type and normalize field names
   const isAuthblockCertificate = !!certificate_id
 
   const result = {
-    // Standard fields (same structure as generateDataHash expects)
     name,
     prn_no,
     serial_no,
@@ -462,8 +607,6 @@ function parseCertificateText(text: string) {
     cgpi,
     remarks,
     date,
-
-    // Additional fields for certificate identification
     certificate_id: isAuthblockCertificate ? certificate_id : '',
     document_type: isAuthblockCertificate ? 'authblock_certificate' : 'traditional_marksheet'
   }
@@ -476,6 +619,8 @@ function parseCertificateText(text: string) {
   console.log('  - Normalized remarks:', remarks)
   console.log('  - Raw name before normalization:', nameRaw)
   console.log('  - Normalized name:', name)
+  console.log('  - Raw sgpi:', sgpiRaw, '→', sgpi)
+  console.log('  - Raw cgpi:', cgpiRaw, '→', cgpi)
   console.log('[OCR Parse] Extracted fields:', JSON.stringify(result, null, 2))
 
   return result

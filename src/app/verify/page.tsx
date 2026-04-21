@@ -58,6 +58,35 @@ function DocumentVerification() {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
   }
 
+  /**
+   * Builds the marksheet coordinate hash EXACTLY as done during issuance:
+   *   - Fields: "Full Name", "PRN Number", "Serial No.", "Examination",
+   *             "Branch", "Session", "Remarks", "SGPI", "CGPI"
+   *   - JSON: array of {field, value} sorted ascending by field name
+   *   - Hash: SHA-256 of that JSON string, prefixed with "0x"
+   */
+  async function buildMarksheetCoordinateHash(fields: {
+    name: string; prn_no: string; serial_no: string; examination: string;
+    branch: string; session: string; sgpi: string; cgpi: string; remarks: string
+  }): Promise<string> {
+    const mapping = [
+      { field: 'Branch',      value: fields.branch      || '' },
+      { field: 'CGPI',        value: fields.cgpi        || '' },
+      { field: 'Examination', value: fields.examination || '' },
+      { field: 'Full Name',   value: fields.name        || '' },
+      { field: 'PRN Number',  value: fields.prn_no      || '' },
+      { field: 'Remarks',     value: fields.remarks     || '' },
+      { field: 'SGPI',        value: fields.sgpi        || '' },
+      { field: 'Serial No.',  value: fields.serial_no   || '' },
+      { field: 'Session',     value: fields.session     || '' },
+    ].sort((a, b) => a.field.localeCompare(b.field))
+
+    const json = JSON.stringify(mapping)
+    console.log('[Verify] Marksheet coordinate hash input:', json)
+    const hash = await sha256(new TextEncoder().encode(json))
+    return '0x' + hash
+  }
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -344,29 +373,15 @@ function DocumentVerification() {
 
     setProcessStep('Text layer extraction complete. Generating hash...')
 
-    // Automatically proceed to hash generation without user input
-    const certificateDataForHashing = {
-      name:           name || '',
-      prn_no:         prn_no || '',
-      serial_no:      serial_no || '',
-      examination:    examination || '',
-      branch:         branch || '',
-      session:        session || '',
-      sgpi:           sgpi || '',
-      cgpi:           cgpi || '',
-      remarks:        remarks || '',
-      certificate_id: certificate_id || ''
-    }
+    // Build hash using the SAME format as issuance: {field, value}[] sorted by field name
+    const dataHashHex = await buildMarksheetCoordinateHash(
+      { name, prn_no, serial_no, examination, branch, session, sgpi, cgpi, remarks }
+    )
 
-    // Sort keys for consistent hashing (same as generateDataHash)
-    const sortedJson = JSON.stringify(certificateDataForHashing, Object.keys(certificateDataForHashing).sort())
-    const dataHash = await sha256(new TextEncoder().encode(sortedJson))
-    const dataHashHex = '0x' + dataHash
+    console.log('[Verify] Generated marksheet coordinate hash from PDF text layer:', dataHashHex)
+    console.log('[Verify] Fields used:', { name, prn_no, serial_no, examination, branch, session, sgpi, cgpi, remarks })
 
-    console.log('[Verify] Generated data hash from PDF text layer:', dataHashHex)
-    console.log('[Verify] Hash input data:', certificateDataForHashing)
-
-    await performVerification(dataHashHex, certificateDataForHashing.certificate_id || undefined)
+    await performVerification(dataHashHex, certificate_id || undefined)
     return true
   }
 
@@ -416,42 +431,29 @@ function DocumentVerification() {
 
       setProcessStep(`OCR complete (${data.provider}). Generating hash...`)
 
-      // Automatically proceed to hash generation without user input
-      const extractedFields = data.extractedData
-      const certificateDataForHashing = {
-        name: extractedFields.name || '',
-        prn_no: extractedFields.prn_no || '',
-        serial_no: extractedFields.serial_no || '',
-        examination: extractedFields.examination || '',
-        branch: extractedFields.branch || '',
-        session: extractedFields.session || '',
-        sgpi: extractedFields.sgpi || '',
-        cgpi: extractedFields.cgpi || '',
-        remarks: extractedFields.remarks || '',
-        certificate_id: extractedFields.certificate_id || ''
-      }
+      const ef = data.extractedData
 
-      // Sort keys for consistent hashing (same as generateDataHash)
-      const sortedJson = JSON.stringify(certificateDataForHashing, Object.keys(certificateDataForHashing).sort())
-      const dataHash = await sha256(new TextEncoder().encode(sortedJson))
-      const dataHashHex = '0x' + dataHash
+      // Build hash using the SAME format as issuance: {field, value}[] sorted by field name
+      const dataHashHex = await buildMarksheetCoordinateHash({
+        name:        ef.name        || '',
+        prn_no:      ef.prn_no      || '',
+        serial_no:   ef.serial_no   || '',
+        examination: ef.examination || '',
+        branch:      ef.branch      || '',
+        session:     ef.session     || '',
+        sgpi:        ef.sgpi        || '',
+        cgpi:        ef.cgpi        || '',
+        remarks:     ef.remarks     || ''
+      })
 
-      console.log('[Verify] Generated data hash from extracted data:', dataHashHex)
-      console.log('[Verify] Hash input data:', certificateDataForHashing)
-      console.log('[Verify] Detailed field breakdown:')
-      console.log('  - name:', `"${certificateDataForHashing.name}"`)
-      console.log('  - prn_no:', `"${certificateDataForHashing.prn_no}"`)
-      console.log('  - serial_no:', `"${certificateDataForHashing.serial_no}"`)
-      console.log('  - examination:', `"${certificateDataForHashing.examination}"`)
-      console.log('  - branch:', `"${certificateDataForHashing.branch}"`)
-      console.log('  - session:', `"${certificateDataForHashing.session}"`)
-      console.log('  - sgpi:', `"${certificateDataForHashing.sgpi}"`)
-      console.log('  - cgpi:', `"${certificateDataForHashing.cgpi}"`)
-      console.log('  - remarks:', `"${certificateDataForHashing.remarks}"`)
-      console.log('  - certificate_id:', `"${certificateDataForHashing.certificate_id}"`)
-      console.log('[Verify] Sorted JSON for hashing:', sortedJson)
+      console.log('[Verify] Generated marksheet coordinate hash from OCR:', dataHashHex)
+      console.log('[Verify] OCR fields:', {
+        name:ef.name, prn_no:ef.prn_no, serial_no:ef.serial_no,
+        examination:ef.examination, branch:ef.branch, session:ef.session,
+        sgpi:ef.sgpi, cgpi:ef.cgpi, remarks:ef.remarks
+      })
 
-      await performVerification(dataHashHex, certificateDataForHashing.certificate_id || undefined)
+      await performVerification(dataHashHex, ef.certificate_id || undefined)
     } catch (error: any) {
       console.error('[Verify] OCR failed, falling back to local:', error.message)
       // Fallback to client-side Tesseract if API fails
@@ -501,29 +503,15 @@ function DocumentVerification() {
 
     setProcessStep('Local OCR complete. Generating hash...')
 
-    // Automatically proceed to hash generation without user input
-    const certificateDataForHashing = {
-      name: name || '',
-      prn_no: prn_no || '',
-      serial_no: serial_no || '',
-      examination: examination || '',
-      branch: branch || '',
-      session: session || '',
-      sgpi: sgpi || '',
-      cgpi: cgpi || '',
-      remarks: remarks || '',
-      certificate_id: '' // Local OCR may not extract this
-    }
+    // Build hash using the SAME format as issuance: {field, value}[] sorted by field name
+    const dataHashHex = await buildMarksheetCoordinateHash(
+      { name, prn_no, serial_no, examination, branch, session, sgpi, cgpi, remarks }
+    )
 
-    // Sort keys for consistent hashing (same as generateDataHash)
-    const sortedJson = JSON.stringify(certificateDataForHashing, Object.keys(certificateDataForHashing).sort())
-    const dataHash = await sha256(new TextEncoder().encode(sortedJson))
-    const dataHashHex = '0x' + dataHash
+    console.log('[Verify] Generated marksheet coordinate hash from local OCR:', dataHashHex)
+    console.log('[Verify] Fields used:', { name, prn_no, serial_no, examination, branch, session, sgpi, cgpi, remarks })
 
-    console.log('[Verify] Generated data hash from local OCR:', dataHashHex)
-    console.log('[Verify] Hash input data:', certificateDataForHashing)
-
-    await performVerification(dataHashHex, certificateDataForHashing.certificate_id || undefined)
+    await performVerification(dataHashHex, undefined)
   }
 
   const handleProcess = async () => {
@@ -600,26 +588,20 @@ function DocumentVerification() {
     setProcessStep('Generating data hash from extracted data...')
 
     try {
-      const certificateDataForHashing = {
-        name: extractedData.name || '',
-        prn_no: extractedData.prn_no || '',
-        serial_no: extractedData.serial_no || '',
+      // Build hash using the SAME format as issuance
+      const dataHashHex = await buildMarksheetCoordinateHash({
+        name:        extractedData.name        || '',
+        prn_no:      extractedData.prn_no      || '',
+        serial_no:   extractedData.serial_no   || '',
         examination: extractedData.examination || '',
-        branch: extractedData.branch || '',
-        session: extractedData.session || '',
-        sgpi: extractedData.sgpi || '',
-        cgpi: extractedData.cgpi || '',
-        remarks: extractedData.remarks || '',
-        certificate_id: extractedData.certificate_id || ''
-      }
+        branch:      extractedData.branch      || '',
+        session:     extractedData.session     || '',
+        sgpi:        extractedData.sgpi        || '',
+        cgpi:        extractedData.cgpi        || '',
+        remarks:     extractedData.remarks     || ''
+      })
 
-      const sortedJson = JSON.stringify(certificateDataForHashing, Object.keys(certificateDataForHashing).sort())
-      const dataHash = await sha256(new TextEncoder().encode(sortedJson))
-      const dataHashHex = '0x' + dataHash
-
-      console.log('[Verify] Generated data hash from extracted data:', dataHashHex)
-      console.log('[Verify] Hash input data:', certificateDataForHashing)
-
+      console.log('[Verify] Generated marksheet coordinate hash from manual edit:', dataHashHex)
       await performVerification(dataHashHex, extractedData.certificate_id || undefined)
     } catch(e: any) {
       setResult({

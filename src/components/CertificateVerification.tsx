@@ -14,7 +14,9 @@ import {
   GraduationCap,
   Hash,
   Link2,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  MapPin
 } from 'lucide-react'
 
 interface CertificateVerificationProps {
@@ -66,25 +68,17 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
 
       const params = new URLSearchParams()
       if (certId) params.set('cert', certId)
-      if (hash) params.set('hash', hash)
-      if (tx) params.set('tx', tx)
+      if (hash)   params.set('hash', hash)
+      if (tx)     params.set('tx', tx)
 
       const response = await fetch(`/api/verify/certificate?${params.toString()}`)
       const data = await response.json()
-
       setResult(data)
     } catch (error: any) {
-      setResult({
-        verified: false,
-        error: 'Network error: ' + error.message
-      })
+      setResult({ verified: false, error: 'Network error: ' + error.message })
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleRetry = () => {
-    verifyCertificate()
   }
 
   if (loading) {
@@ -94,7 +88,7 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
           <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Verifying Certificate</h2>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Verifying Marksheet</h2>
           <p className="text-slate-600">Checking blockchain authenticity...</p>
         </div>
       </div>
@@ -113,13 +107,13 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
         >
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-full text-blue-700 font-medium text-sm mb-4">
             <Award className="w-4 h-4" />
-            Authblock Certificate Verification
+            Authblock Marksheet Verification
           </div>
           <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">
-            Certificate Verification
+            Marksheet Verification
           </h1>
           <p className="text-slate-600 max-w-2xl mx-auto">
-            Blockchain-verified academic certificate from Fr. Conceicao Rodrigues College of Engineering
+            Blockchain-verified Semester Grade Card from Fr. Conceicao Rodrigues College of Engineering
           </p>
         </motion.div>
 
@@ -131,7 +125,6 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
             result?.verified ? 'border-emerald-200' : 'border-red-200'
           }`}
         >
-
           {/* Status Header */}
           <div className={`p-6 text-center ${
             result?.verified
@@ -139,29 +132,21 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
               : 'bg-gradient-to-r from-red-50 to-rose-50'
           }`}>
             <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center mb-4 ${
-              result?.verified
-                ? 'bg-emerald-500 text-white'
-                : 'bg-red-500 text-white'
+              result?.verified ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
             }`}>
-              {result?.verified ? (
-                <ShieldCheck className="w-8 h-8" />
-              ) : (
-                <XCircle className="w-8 h-8" />
-              )}
+              {result?.verified ? <ShieldCheck className="w-8 h-8" /> : <XCircle className="w-8 h-8" />}
             </div>
 
             <h2 className={`text-2xl font-bold mb-2 ${
               result?.verified ? 'text-emerald-900' : 'text-red-900'
             }`}>
-              {result?.verified ? 'Certificate Verified' : 'Verification Failed'}
+              {result?.verified ? 'Marksheet Verified ✓' : 'Verification Failed'}
             </h2>
 
-            <p className={`text-sm ${
-              result?.verified ? 'text-emerald-700' : 'text-red-700'
-            }`}>
+            <p className={`text-sm ${result?.verified ? 'text-emerald-700' : 'text-red-700'}`}>
               {result?.verified
-                ? 'This certificate is authentic and verified on the blockchain'
-                : result?.error || 'Certificate could not be verified'
+                ? 'This marksheet is authentic and its data is secured on the Ethereum blockchain'
+                : result?.error || 'Marksheet could not be verified'
               }
             </p>
           </div>
@@ -226,6 +211,39 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
                 </div>
               </div>
 
+              {/* Marksheet Verified Fields (what was hashed) */}
+              {result.certificate.ocr_coordinate_map && result.certificate.ocr_coordinate_map.length > 0 && (
+                <div className="mb-8">
+                  <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-amber-600" />
+                    Verified Marksheet Fields (Blockchain Anchored Data)
+                  </h3>
+                  <p className="text-sm text-slate-500 mb-4">
+                    The following field values were hashed and anchored to the Ethereum blockchain.
+                    Any tampering of these values on the marksheet will cause verification to fail.
+                    Their exact coordinates on the page are also recorded for OCR-based text extraction during verification.
+                  </p>
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-100">
+                        <tr>
+                          <th className="text-left px-4 py-3 font-bold text-slate-600 uppercase tracking-wider text-xs">Field</th>
+                          <th className="text-left px-4 py-3 font-bold text-slate-600 uppercase tracking-wider text-xs">Value (Anchored on Blockchain)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {result.certificate.ocr_coordinate_map.map((entry: any, idx: number) => (
+                          <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                            <td className="px-4 py-2 font-semibold text-slate-700">{entry.field}</td>
+                            <td className="px-4 py-2 font-mono text-slate-900">{entry.value}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {/* Verification Checks */}
               <div className="mb-8">
                 <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
@@ -236,19 +254,19 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Hash Validation</label>
                     <div className={result.verification?.hash_valid ? 'text-emerald-700 font-bold' : 'text-red-700 font-bold'}>
-                      {result.verification?.hash_valid ? 'Valid' : 'Invalid'}
+                      {result.verification?.hash_valid ? '✓ Valid' : '✗ Invalid'}
                     </div>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Transaction Validation</label>
                     <div className={result.verification?.transaction_valid ? 'text-emerald-700 font-bold' : 'text-red-700 font-bold'}>
-                      {result.verification?.transaction_valid ? 'Valid' : 'Invalid'}
+                      {result.verification?.transaction_valid ? '✓ Valid' : '✗ Invalid'}
                     </div>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Blockchain Anchor</label>
                     <div className={result.verification?.on_blockchain ? 'text-emerald-700 font-bold' : 'text-red-700 font-bold'}>
-                      {result.verification?.on_blockchain ? 'Confirmed' : 'Missing'}
+                      {result.verification?.on_blockchain ? '✓ Confirmed' : '✗ Missing'}
                     </div>
                   </div>
                 </div>
@@ -259,34 +277,38 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
                     <div className="font-mono text-sm break-all text-slate-700">{formatValue(result.verification?.expected_hash)}</div>
                   </div>
                   <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
-                    <label className="block text-xs font-bold text-emerald-700 uppercase tracking-wider mb-2">Stored Hash (in DB)</label>
-                    <div className="font-mono text-sm break-all text-slate-700">{formatValue(result.verification?.stored_hash)}</div>
+                    <label className="block text-xs font-bold text-emerald-700 uppercase tracking-wider mb-2">Stored Marksheet Data Hash (DB)</label>
+                    <div className="font-mono text-sm break-all text-slate-700">{formatValue(result.verification?.stored_data_hash)}</div>
                   </div>
                   <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-xl">
                     <label className="block text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Expected Transaction (from QR)</label>
                     <div className="font-mono text-sm break-all text-slate-700">{formatValue(result.verification?.expected_tx)}</div>
                   </div>
                   <div className="bg-indigo-50 border border-indigo-200 p-4 rounded-xl">
-                    <label className="block text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Stored Transaction (in DB)</label>
+                    <label className="block text-xs font-bold text-indigo-700 uppercase tracking-wider mb-2">Stored Transaction Hash (DB)</label>
                     <div className="font-mono text-sm break-all text-slate-700">{formatValue(result.verification?.stored_tx)}</div>
                   </div>
                 </div>
               </div>
 
-              {/* Blockchain Verification */}
+              {/* Blockchain Anchors */}
               <div className="mb-8">
                 <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
                   <Hash className="w-5 h-5 text-indigo-600" />
-                  Blockchain Anchors
+                  Marksheet Blockchain Anchors
                 </h3>
                 <div className="grid grid-cols-1 gap-4">
                   <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
-                    <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Data Hash</label>
+                    <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">
+                      Marksheet Data Hash (Coordinate Map SHA-256)
+                    </label>
                     <div className="font-mono text-sm break-all text-slate-700">{formatValue(result.blockchain?.data_hash)}</div>
                   </div>
 
                   <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
-                    <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">PDF Hash</label>
+                    <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">
+                      Marksheet PDF Hash (SHA-256)
+                    </label>
                     <div className="font-mono text-sm break-all text-slate-700">{formatValue(result.blockchain?.pdf_hash)}</div>
                   </div>
 
@@ -345,12 +367,44 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Issued By</label>
-                    <div className="text-sm font-semibold text-slate-900">{formatValue(result.certificate.issued_by || 'Government of Jharkhand')}</div>
+                    <div className="text-sm font-semibold text-slate-900">{formatValue(result.certificate.issued_by || 'FRCRCE Admin')}</div>
                   </div>
                   <div className="bg-slate-50 p-4 rounded-xl">
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">On-chain Timestamp</label>
                     <div className="text-sm font-semibold text-slate-900">{formatDate(result.verification?.blockchain_timestamp)}</div>
                   </div>
+                </div>
+
+                {/* Document Links */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  {result.certificate?.marksheet_url && (
+                    <div className="bg-slate-50 p-4 rounded-xl">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Marksheet PDF</label>
+                      <a
+                        href={result.certificate.marksheet_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900 transition-colors"
+                      >
+                        <FileText className="w-4 h-4" />
+                        View Marksheet
+                      </a>
+                    </div>
+                  )}
+                  {result.certificate?.certificate_url && (
+                    <div className="bg-slate-50 p-4 rounded-xl">
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Authblock Certificate</label>
+                      <a
+                        href={result.certificate.certificate_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-blue-700 hover:text-blue-900 transition-colors"
+                      >
+                        <Award className="w-4 h-4" />
+                        View Certificate
+                      </a>
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-slate-50 p-4 rounded-xl mb-4">
@@ -369,13 +423,6 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
                     <div className="text-sm font-semibold text-slate-900">Not available</div>
                   )}
                 </div>
-
-                <div className="bg-slate-900 rounded-xl p-4">
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Raw Certificate Payload</label>
-                  <pre className="text-xs text-slate-100 overflow-auto whitespace-pre-wrap break-all">
-                    {JSON.stringify(result.certificate?.certificate_data ?? {}, null, 2)}
-                  </pre>
-                </div>
               </div>
             </div>
           )}
@@ -388,11 +435,8 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
                   <AlertCircle className="w-5 h-5 text-red-500" />
                   <h4 className="font-bold text-red-900">Verification Details</h4>
                 </div>
-                <p className="text-red-700 text-sm">
-                  {result.error}
-                </p>
+                <p className="text-red-700 text-sm">{result.error}</p>
 
-                {/* Verification breakdown */}
                 {result.verification && (
                   <div className="mt-4 space-y-2">
                     <div className="flex items-center justify-between text-sm">
@@ -428,7 +472,7 @@ export default function CertificateVerification({ certId, hash, tx }: Certificat
               </div>
             </div>
             <button
-              onClick={handleRetry}
+              onClick={verifyCertificate}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
             >
               <RefreshCcw className="w-4 h-4" />

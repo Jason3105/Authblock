@@ -1,5 +1,17 @@
 import crypto from 'crypto'
 
+/**
+ * Represents a single mapped data point on the marksheet PDF.
+ * Includes both the coordinates where text is drawn and the actual text value.
+ * Used to generate a tamper-evident hash of the marksheet's content.
+ */
+export interface MarksheetCoordinateMap {
+  field: string   // Logical field name (e.g., "Full Name", "SGPI")
+  x: number       // X-coordinate on the PDF page
+  y: number       // Y-coordinate on the PDF page
+  value: string   // The actual text value rendered on the PDF
+}
+
 export interface CertificateData {
   // Student Info
   name: string
@@ -134,6 +146,26 @@ export function generateCertificateHashes(certificateData: CertificateData): Cer
     dataHash: generateDataHash(certificateData),
     certificateHash: generateCertificateHash(certificateData)
   }
+}
+
+/**
+ * Generate a tamper-evident hash from the marksheet coordinate map.
+ * This hashes the structured JSON of { field, x, y, value } objects,
+ * meaning any tampering of text values at those coordinates will produce
+ * a completely different hash and fail blockchain verification.
+ */
+export function generateMarksheetCoordinateHash(mapping: MarksheetCoordinateMap[]): string {
+  // Sort by field name for deterministic output.
+  // x/y coordinates are intentionally excluded from the hash — they are used
+  // externally for OCR/canvas-based text extraction during verification, but
+  // the tamper-evident hash only covers the actual content (field + value).
+  const sorted = [...mapping]
+    .sort((a, b) => a.field.localeCompare(b.field))
+    .map(({ field, value }) => ({ field, value }))
+
+  const json = JSON.stringify(sorted)
+  const hash = crypto.createHash('sha256').update(json).digest('hex')
+  return '0x' + hash
 }
 
 /**
