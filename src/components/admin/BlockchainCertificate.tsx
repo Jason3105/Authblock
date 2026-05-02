@@ -44,18 +44,20 @@ export default function BlockchainCertificate({ data, showQR = true }: Blockchai
   const verificationUrl = data.verification_url || `${window.location.origin}/verify?cert=${data.certificate_id}`
 
   return (
-    /* A4 dimensions: 794px × 1123px at 96dpi */
-    <div
-      className="mx-auto bg-white text-black font-sans"
-      style={{
-        width: '794px',
-        minHeight: '1123px',
-        border: '1px solid #d1d5db',
-        boxShadow: '0 4px 24px rgba(0,0,0,0.1)',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
+    <div className="w-full max-w-full overflow-x-auto pb-4 custom-scrollbar-sm">
+      <div className="min-w-[794px] flex justify-center">
+        {/* A4 dimensions: 794px × 1123px at 96dpi */}
+        <div
+          className="mx-auto bg-white text-black font-sans"
+          style={{
+            width: '794px',
+            minHeight: '1123px',
+            border: '1px solid #d1d5db',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.1)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
       {/* Top accent bar */}
       <div style={{ height: '8px', background: 'linear-gradient(90deg, #1d4ed8 0%, #0ea5e9 50%, #1d4ed8 100%)' }} />
 
@@ -329,6 +331,8 @@ export default function BlockchainCertificate({ data, showQR = true }: Blockchai
 
       {/* Bottom accent bar */}
       <div style={{ height: '6px', background: 'linear-gradient(90deg, #1d4ed8 0%, #0ea5e9 50%, #1d4ed8 100%)' }} />
+    </div>
+      </div>
     </div>
   )
 }

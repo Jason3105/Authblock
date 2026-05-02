@@ -369,7 +369,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
       </motion.div>
 
       {/* ── Tabs ── */}
-      <div className="flex items-center gap-2 border-b border-slate-200">
+      <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto custom-scrollbar-sm pb-1">
         <button
           onClick={() => setActiveTab('manual')}
           className={`flex items-center gap-2 px-6 py-4 font-bold transition-all text-sm uppercase tracking-wide border-b-2 ${
@@ -442,7 +442,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                 <div className="space-y-5">
                   <h3 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2">Student Information</h3>
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Marksheet No.</label>
                       <input type="text" required className="input font-medium font-mono text-purple-600" 
@@ -454,7 +454,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                         value={formData.prn_no} onChange={e => setFormData({...formData, prn_no: e.target.value})} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Student Full Name</label>
                       <input type="text" required className="input font-medium" 
@@ -466,7 +466,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                         value={formData.student_email} onChange={e => setFormData({...formData, student_email: e.target.value})} />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">SGPI</label>
                       <input type="text" required className="input font-medium"
@@ -498,7 +498,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                     <input type="text" required className="input font-medium bg-slate-50"
                       value={formData.session_name} onChange={e => setFormData({...formData, session_name: e.target.value})} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Remarks</label>
                       <input type="text" required className="input font-medium bg-slate-50"
@@ -525,8 +525,8 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                 <div className="space-y-3">
                   {formData.subjects.map((sub, idx) => (
                     <div key={idx} className="flex flex-col md:flex-row items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/60">
-                      <div className="grid grid-cols-10 w-full gap-3">
-                        <div className="col-span-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-10 w-full gap-3">
+                        <div className="col-span-2 sm:col-span-2">
                           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Code</label>
                           <input type="text" placeholder="Code" className="input font-medium text-xs w-full" value={sub.code} onChange={e => {
                             const newSubjects = [...formData.subjects]
@@ -534,7 +534,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                             setFormData({...formData, subjects: newSubjects})
                           }} required />
                         </div>
-                        <div className="col-span-4">
+                        <div className="col-span-2 sm:col-span-4">
                           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Title</label>
                           <input type="text" placeholder="Title" className="input font-medium text-xs w-full" value={sub.title} onChange={e => {
                             const newSubjects = [...formData.subjects]
@@ -542,7 +542,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                             setFormData({...formData, subjects: newSubjects})
                           }} required />
                         </div>
-                        <div className="col-span-1">
+                        <div className="col-span-1 sm:col-span-1">
                           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Cr.</label>
                           <input type="text" placeholder="Cr." className="input font-medium text-xs w-full" value={sub.credits} onChange={e => {
                             const newSubjects = [...formData.subjects]
@@ -550,7 +550,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                             setFormData({...formData, subjects: newSubjects})
                           }} required />
                         </div>
-                        <div className="col-span-1">
+                        <div className="col-span-1 sm:col-span-1">
                           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Gr.</label>
                           <input type="text" placeholder="Gr." className="input font-medium text-xs w-full" value={sub.grade} onChange={e => {
                             const newSubjects = [...formData.subjects]
@@ -558,7 +558,7 @@ function MarksheetsContent({ currentUser }: { currentUser: AdminRecord }) {
                             setFormData({...formData, subjects: newSubjects})
                           }} required />
                         </div>
-                        <div className="col-span-2">
+                        <div className="col-span-2 sm:col-span-2">
                           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">GP</label>
                           <input type="text" placeholder="GP" className="input font-medium text-xs w-full" value={sub.gp} onChange={e => {
                             const newSubjects = [...formData.subjects]

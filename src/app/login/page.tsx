@@ -64,7 +64,7 @@ export default function LoginPage() {
       <div className="w-full max-w-5xl mx-auto flex z-10 p-4 sm:p-6 lg:p-8 relative">
         {/* Left Side: Login Form */}
         <div className="w-full lg:w-1/2 flex flex-col justify-center">
-          <Link href="/" className="flex items-center gap-2.5 mb-16 hover:opacity-80 transition-opacity w-fit">
+          <Link href="/" className="flex items-center gap-2.5 mb-10 sm:mb-16 hover:opacity-80 transition-opacity w-fit">
             <Image src="/logo.png" alt="Authblock" width={32} height={32} className="w-8 h-8" />
             <span className="text-xl font-bold text-slate-900 tracking-tight">AUTHBLOCK</span>
           </Link>

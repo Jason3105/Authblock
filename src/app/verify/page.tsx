@@ -70,15 +70,15 @@ function DocumentVerification() {
     branch: string; session: string; sgpi: string; cgpi: string; remarks: string
   }): Promise<string> {
     const mapping = [
-      { field: 'Branch',      value: fields.branch      || '' },
-      { field: 'CGPI',        value: fields.cgpi        || '' },
+      { field: 'Branch', value: fields.branch || '' },
+      { field: 'CGPI', value: fields.cgpi || '' },
       { field: 'Examination', value: fields.examination || '' },
-      { field: 'Full Name',   value: fields.name        || '' },
-      { field: 'PRN Number',  value: fields.prn_no      || '' },
-      { field: 'Remarks',     value: fields.remarks     || '' },
-      { field: 'SGPI',        value: fields.sgpi        || '' },
-      { field: 'Serial No.',  value: fields.serial_no   || '' },
-      { field: 'Session',     value: fields.session     || '' },
+      { field: 'Full Name', value: fields.name || '' },
+      { field: 'PRN Number', value: fields.prn_no || '' },
+      { field: 'Remarks', value: fields.remarks || '' },
+      { field: 'SGPI', value: fields.sgpi || '' },
+      { field: 'Serial No.', value: fields.serial_no || '' },
+      { field: 'Session', value: fields.session || '' },
     ].sort((a, b) => a.field.localeCompare(b.field))
 
     const json = JSON.stringify(mapping)
@@ -157,17 +157,36 @@ function DocumentVerification() {
     const margin = Math.floor(Math.min(width, height) * 0.02) // 2% margin
     const edgeThreshold = Math.min(threshold + 20, 220) // Tighter: only clearly bright doc pixels
 
+    // Analyze rows to find document bounds more robustly than single pixels
     for (let y = margin; y < height - margin; y++) {
+      let brightCount = 0
       for (let x = margin; x < width - margin; x++) {
-        const idx = y * width + x
-        // Document pixels are clearly brighter than background
-        if (gray[idx] > edgeThreshold) {
-          if (x < minX) minX = x
-          if (x > maxX) maxX = x
-          if (y < minY) minY = y
-          if (y > maxY) maxY = y
-        }
+        if (gray[y * width + x] > edgeThreshold) brightCount++
       }
+      // If at least 25% of the row is bright document pixels
+      if (brightCount > (width * 0.25)) {
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+
+    // Analyze columns
+    for (let x = margin; x < width - margin; x++) {
+      let brightCount = 0
+      for (let y = margin; y < height - margin; y++) {
+        if (gray[y * width + x] > edgeThreshold) brightCount++
+      }
+      // If at least 25% of the column is bright document pixels
+      if (brightCount > (height * 0.25)) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+      }
+    }
+
+    if (minX >= maxX || minY >= maxY) {
+      // Fallback if no robust edges found
+      minX = margin; maxX = width - margin;
+      minY = margin; maxY = height - margin;
     }
 
     // Fallback: if detected region covers >92% of the image, detection failed
@@ -191,36 +210,24 @@ function DocumentVerification() {
     // Calculate detected dimensions
     let cropWidth = maxX - minX
     let cropHeight = maxY - minY
-    const detectedRatio = cropWidth / cropHeight
 
-    // Adjust to match A4 aspect ratio if close
-    if (Math.abs(detectedRatio - MARKSHEET_ASPECT_RATIO) < 0.15) {
-      // Detected ratio is close to A4, adjust to exact ratio
-      if (detectedRatio > MARKSHEET_ASPECT_RATIO) {
-        // Too wide, reduce width
-        const newWidth = cropHeight * MARKSHEET_ASPECT_RATIO
-        const diff = (cropWidth - newWidth) / 2
-        minX += diff
-        cropWidth = newWidth
-      } else {
-        // Too tall, reduce height
-        const newHeight = cropWidth / MARKSHEET_ASPECT_RATIO
-        const diff = (cropHeight - newHeight) / 2
-        minY += diff
-        cropHeight = newHeight
-      }
+    // Ensure we don't have invalid dimensions
+    if (cropWidth <= 0 || cropHeight <= 0) {
+      minX = 0; minY = 0; cropWidth = width; cropHeight = height;
     }
 
-    // Create cropped canvas at high resolution for OCR
-    const TARGET_WIDTH = 1785 // 595 * 3 for ~300 DPI
-    const TARGET_HEIGHT = 2523 // 841 * 3 for ~300 DPI
+    // Create cropped canvas at high resolution for OCR, preserving aspect ratio!
+    // Stretching the image ruins OCR accuracy for rotated/skewed photos.
+    const TARGET_WIDTH = 1785 // ~300 DPI width
+    const scale = TARGET_WIDTH / cropWidth
+    const TARGET_HEIGHT = Math.round(cropHeight * scale)
 
     const croppedCanvas = document.createElement('canvas')
     croppedCanvas.width = TARGET_WIDTH
     croppedCanvas.height = TARGET_HEIGHT
     const croppedCtx = croppedCanvas.getContext('2d')!
 
-    // Draw cropped and scaled image
+    // Draw cropped and scaled image proportionally
     croppedCtx.fillStyle = '#FFFFFF'
     croppedCtx.fillRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT)
     croppedCtx.drawImage(
@@ -229,20 +236,8 @@ function DocumentVerification() {
       0, 0, TARGET_WIDTH, TARGET_HEIGHT
     )
 
-    // Apply contrast enhancement for better OCR
-    const croppedData = croppedCtx.getImageData(0, 0, TARGET_WIDTH, TARGET_HEIGHT)
-    const pixels = croppedData.data
-
-    for (let i = 0; i < pixels.length; i += 4) {
-      // Increase contrast
-      for (let c = 0; c < 3; c++) {
-        let val = pixels[i + c]
-        val = ((val - 128) * 1.3) + 128 // 1.3x contrast
-        pixels[i + c] = Math.max(0, Math.min(255, val))
-      }
-    }
-
-    croppedCtx.putImageData(croppedData, 0, 0)
+    // No need to apply contrast here, the backend uses Jimp to enhance the image properly.
+    // Double contrast enhancement degrades text quality (e.g. turning 'e' into 'o').
 
     return croppedCanvas
   }
@@ -330,16 +325,16 @@ function DocumentVerification() {
       //     -18 = 479.89  ← SGPI (x=40) / CGPI (x=160) / Remarks (x=310)
       //   Certificate ID at y = ch-145 = 696.89, x starts at 118
 
-      name          = extractAtCoord(40,  623, 6, 260)
-      serial_no     = extractAtCoord(310, 623, 6, 200)
-      prn_no        = extractAtCoord(40,  588, 6, 200)
-      branch        = extractAtCoord(310, 588, 6, 200)
-      examination   = extractAtCoord(40,  525, 6, 260)
-      session       = extractAtCoord(310, 525, 6, 200)
-      sgpi          = extractAtCoord(40,  479, 6, 100)
-      cgpi          = extractAtCoord(160, 479, 6, 100)
-      remarks       = extractAtCoord(310, 479, 6, 200)
-      certificate_id= extractAtCoord(118, 696, 6, 300)
+      name = extractAtCoord(40, 623, 6, 260)
+      serial_no = extractAtCoord(310, 623, 6, 200)
+      prn_no = extractAtCoord(40, 588, 6, 200)
+      branch = extractAtCoord(310, 588, 6, 200)
+      examination = extractAtCoord(40, 525, 6, 260)
+      session = extractAtCoord(310, 525, 6, 200)
+      sgpi = extractAtCoord(40, 479, 6, 100)
+      cgpi = extractAtCoord(160, 479, 6, 100)
+      remarks = extractAtCoord(310, 479, 6, 200)
+      certificate_id = extractAtCoord(118, 696, 6, 300)
 
       // Strip the '—' placeholder that was written when field was empty
       serial_no = serial_no === '—' ? '' : serial_no
@@ -350,15 +345,15 @@ function DocumentVerification() {
       setProcessStep('Extracting from Marksheet template format...')
 
       // ── Legacy Marksheet layout (template overlay coords) ─────
-      serial_no   = extractAtCoord(440, 685, 5, 120)
-      name        = extractLineFrom(150, 647, 3)
+      serial_no = extractAtCoord(440, 685, 5, 120)
+      name = extractLineFrom(150, 647, 3)
       examination = extractLineFrom(150, 630, 3)
-      branch      = extractLineFrom(150, 612, 3)
-      session     = extractLineFrom(150, 595, 3)
-      prn_no      = extractAtCoord(150, 580, 3, 150)
-      remarks     = extractAtCoord(130, 118, 5, 100)
-      sgpi        = extractAtCoord(277, 118, 5, 50)
-      cgpi        = extractAtCoord(335, 118, 5, 50)
+      branch = extractLineFrom(150, 612, 3)
+      session = extractLineFrom(150, 595, 3)
+      prn_no = extractAtCoord(150, 580, 3, 150)
+      remarks = extractAtCoord(130, 118, 5, 100)
+      sgpi = extractAtCoord(277, 118, 5, 50)
+      cgpi = extractAtCoord(335, 118, 5, 50)
 
       console.log('[Verify] Marksheet fields:', { name, prn_no, serial_no, examination, branch, session, sgpi, cgpi, remarks })
     }
@@ -435,22 +430,22 @@ function DocumentVerification() {
 
       // Build hash using the SAME format as issuance: {field, value}[] sorted by field name
       const dataHashHex = await buildMarksheetCoordinateHash({
-        name:        ef.name        || '',
-        prn_no:      ef.prn_no      || '',
-        serial_no:   ef.serial_no   || '',
+        name: ef.name || '',
+        prn_no: ef.prn_no || '',
+        serial_no: ef.serial_no || '',
         examination: ef.examination || '',
-        branch:      ef.branch      || '',
-        session:     ef.session     || '',
-        sgpi:        ef.sgpi        || '',
-        cgpi:        ef.cgpi        || '',
-        remarks:     ef.remarks     || ''
+        branch: ef.branch || '',
+        session: ef.session || '',
+        sgpi: ef.sgpi || '',
+        cgpi: ef.cgpi || '',
+        remarks: ef.remarks || ''
       })
 
       console.log('[Verify] Generated marksheet coordinate hash from OCR:', dataHashHex)
       console.log('[Verify] OCR fields:', {
-        name:ef.name, prn_no:ef.prn_no, serial_no:ef.serial_no,
-        examination:ef.examination, branch:ef.branch, session:ef.session,
-        sgpi:ef.sgpi, cgpi:ef.cgpi, remarks:ef.remarks
+        name: ef.name, prn_no: ef.prn_no, serial_no: ef.serial_no,
+        examination: ef.examination, branch: ef.branch, session: ef.session,
+        sgpi: ef.sgpi, cgpi: ef.cgpi, remarks: ef.remarks
       })
 
       await performVerification(dataHashHex, ef.certificate_id || undefined)
@@ -477,21 +472,21 @@ function DocumentVerification() {
     // Extract fields using regex patterns
     const extract = (regex: RegExp, fallback = '') => {
       const match = text.match(regex)
-      return match ? match[1].trim() : fallback
+      return match ? match[1].trim().replace(/[\n\r]/g, '') : fallback
     }
 
     setProcessStep('Parsing extracted text...')
 
-    const serial_no = extract(/(SN-\d{3,})/i, '')
-    const name = extract(/Name\s*[:\s]*([A-Za-z\s]+?)(?:\s{2,}|PRN|$)/i, '')
-    const examination = extract(/Examination\s*[:\s]*([^\n]+)/i, '')
-    const branch = extract(/Branch\s*[:\s]*([^\n]+)/i, '')
-    const session = extract(/Session\s*[:\s]*([^\n]+)/i, '')
-    const prn_no = extract(/PRN[.\s]*(?:No\.?)?[:\s]*(\d{10,16})/i, '')
-    const sgpi = extract(/SGPI\s*[:\s]*([\d.]+)/i, '')
-    const cgpi = extract(/CGPI\s*[:\s]*([\d.]+)/i, '')
-    const remarks = extract(/Remarks?\s*[:\s]*([A-Za-z\s]+?)(?:\s{2,}|SGPI|$)/i, '')
-    const date = extract(/Date\s*[:\s]*([^\n]+)/i, '')
+    // Improved regexes to handle OCR inaccuracies and common noise
+    const serial_no = extract(/(?:SN|No|N0)[-.\s]*([A-Z0-9-]{5,})/i, '') || extract(/([S5][Nn][-.\s]*\d{3,})/i, '')
+    const name = extract(/Name\s*[:;.,\s]*([A-Za-z\s]+?)(?:\s{2,}|PRN|Branch|Examination|$)/i, '')
+    const examination = extract(/Examination\s*[:;.,\s]*([A-Za-z0-9\s]+?)(?:\s{2,}|Branch|Session|$)/i, '')
+    const branch = extract(/Branch\s*[:;.,\s]*([A-Za-z0-9\s]+?)(?:\s{2,}|Session|PRN|$)/i, '')
+    const session = extract(/Session\s*[:;.,\s]*([A-Za-z0-9\s]+?)(?:\s{2,}|PRN|Date|$)/i, '')
+    const prn_no = extract(/PRN[.\s]*(?:No\.?)?[:;.,\s]*(\d{10,16})/i, '')
+    const sgpi = extract(/SGP[I1l]\s*[:;.,\s]*([\d.]+)/i, '')
+    const cgpi = extract(/CGP[I1l]\s*[:;.,\s]*([\d.]+)/i, '')
+    const remarks = extract(/Remarks?\s*[:;.,\s]*([A-Za-z\s]+?)(?:\s{2,}|SGP[I1l]|Date|$)/i, '')
 
     // Extract totals
     const credits = extract(/Total\s+Credits?\s*[:\s]*(\d+)/i, '')
@@ -517,7 +512,7 @@ function DocumentVerification() {
   const handleProcess = async () => {
     if (!file) return
     setIsProcessing(true)
-    
+
     // Clear previous results but keep the file
     setExtractedData(null)
     setResult(null)
@@ -532,12 +527,12 @@ function DocumentVerification() {
         try {
           const res = await fetch('/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hash: pdfHash }) })
           pdfRes = await res.json()
-        } catch(e) {}
+        } catch (e) { }
 
         if (pdfRes && pdfRes.verified) {
-           setResult(pdfRes)
-           setIsProcessing(false)
-           return
+          setResult(pdfRes)
+          setIsProcessing(false)
+          return
         }
 
         setProcessStep('PDF hash not found. Loading PDF document...')
@@ -590,20 +585,20 @@ function DocumentVerification() {
     try {
       // Build hash using the SAME format as issuance
       const dataHashHex = await buildMarksheetCoordinateHash({
-        name:        extractedData.name        || '',
-        prn_no:      extractedData.prn_no      || '',
-        serial_no:   extractedData.serial_no   || '',
+        name: extractedData.name || '',
+        prn_no: extractedData.prn_no || '',
+        serial_no: extractedData.serial_no || '',
         examination: extractedData.examination || '',
-        branch:      extractedData.branch      || '',
-        session:     extractedData.session     || '',
-        sgpi:        extractedData.sgpi        || '',
-        cgpi:        extractedData.cgpi        || '',
-        remarks:     extractedData.remarks     || ''
+        branch: extractedData.branch || '',
+        session: extractedData.session || '',
+        sgpi: extractedData.sgpi || '',
+        cgpi: extractedData.cgpi || '',
+        remarks: extractedData.remarks || ''
       })
 
       console.log('[Verify] Generated marksheet coordinate hash from manual edit:', dataHashHex)
       await performVerification(dataHashHex, extractedData.certificate_id || undefined)
-    } catch(e: any) {
+    } catch (e: any) {
       setResult({
         verified: false,
         message: 'Error generating data hash: ' + e.message
@@ -652,20 +647,20 @@ function DocumentVerification() {
         const _pdfjs = (window as any)['pdfjs-dist/build/pdf']
         if (_pdfjs) _pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
       }} />
-      
+
       <Navbar />
 
       {/* Abstract Animated Background inspired by the landing page blue/white theme */}
       <div className="absolute top-1/4 left-1/4 w-[50vw] h-[50vw] bg-blue-500/10 rounded-full blur-[120px] pointer-events-none -z-10 mix-blend-multiply" />
       <div className="absolute bottom-0 right-1/4 w-[40vw] h-[40vw] bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none -z-10 mix-blend-multiply" />
-      
+
       {/* Subtle grid overlay */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none -z-10" />
 
       <div className="flex-1 flex flex-col items-center justify-center p-4 py-16 sm:py-24 relative z-10 w-full">
         <div className="max-w-5xl w-full mx-auto">
-          
-          <motion.div 
+
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-center mb-12 sm:mb-16"
@@ -688,27 +683,26 @@ function DocumentVerification() {
           <AnimatePresence mode="wait">
             {/* Entry / Dropzone / Processing State */}
             {!extractedData && !result && (
-              <motion.div 
+              <motion.div
                 key="dropzone"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="w-full max-w-3xl mx-auto"
               >
-                <div 
-                  className={`relative overflow-hidden border-2 border-dashed rounded-[2rem] p-10 sm:p-14 text-center transition-all duration-300 ${
-                    dragActive 
-                      ? 'border-blue-500 bg-blue-50/50 shadow-2xl shadow-blue-500/20 scale-[1.02]' 
-                      : file 
-                        ? 'border-blue-200 bg-white/80 shadow-xl shadow-slate-200/50' 
+                <div
+                  className={`relative overflow-hidden border-2 border-dashed rounded-[2rem] p-10 sm:p-14 text-center transition-all duration-300 ${dragActive
+                      ? 'border-blue-500 bg-blue-50/50 shadow-2xl shadow-blue-500/20 scale-[1.02]'
+                      : file
+                        ? 'border-blue-200 bg-white/80 shadow-xl shadow-slate-200/50'
                         : 'border-slate-300 bg-white/60 hover:border-blue-400 hover:bg-white hover:shadow-xl shadow-slate-200/50 hover:shadow-blue-500/10'
-                  } backdrop-blur-xl group`}
+                    } backdrop-blur-xl group`}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
                   onDrop={handleDrop}
                 >
-                  
+
                   {!file ? (
                     <div className="flex flex-col items-center">
                       <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-indigo-50 rounded-2xl flex items-center justify-center mb-6 shadow-inner border border-white group-hover:scale-110 transition-transform duration-500 delay-75">
@@ -716,7 +710,7 @@ function DocumentVerification() {
                       </div>
                       <h3 className="text-2xl font-bold text-slate-800 mb-3 tracking-tight">Upload Document</h3>
                       <p className="text-slate-500 font-medium mb-8 max-w-xs leading-relaxed">Drag & drop your physical scan or digital PDF here</p>
-                      
+
                       <label className="relative overflow-hidden bg-slate-900 text-white px-8 py-4 rounded-xl font-semibold cursor-pointer shadow-lg shadow-slate-900/20 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 active:scale-95 group/btn">
                         <span className="relative z-10 flex items-center gap-2">Browse Files <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" /></span>
                         <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300" />
@@ -737,10 +731,10 @@ function DocumentVerification() {
                           <div className="absolute inset-0 bg-blue-400 rounded-2xl animate-ping opacity-20" />
                         )}
                       </div>
-                      
+
                       <h3 className="text-2xl font-bold text-slate-800 mb-2 truncate max-w-full px-4">{file.name}</h3>
                       <p className="text-slate-500 font-medium mb-10">{(file.size / 1024 / 1024).toFixed(2)} MB • {file.type.replace('application/', '').replace('image/', '').toUpperCase()}</p>
-                      
+
                       {!isProcessing ? (
                         <div className="flex items-center gap-4">
                           <button onClick={() => setFile(null)} className="px-6 py-3 rounded-xl font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 transition-colors shadow-sm">
@@ -753,7 +747,7 @@ function DocumentVerification() {
                       ) : (
                         <div className="flex flex-col items-center w-full max-w-sm">
                           <div className="w-full bg-slate-100 overflow-hidden h-2 rounded-full mb-4 relative">
-                            <motion.div 
+                            <motion.div
                               className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-blue-500 to-indigo-500 w-full"
                               initial={{ x: '-100%' }}
                               animate={{ x: '100%' }}
@@ -761,7 +755,7 @@ function DocumentVerification() {
                             />
                           </div>
                           <p className="text-slate-800 font-medium uppercase tracking-widest text-sm animate-pulse flex items-center gap-2">
-                             <Loader2 className="w-4 h-4 animate-spin" /> {processStep || 'Analyzing...'}
+                            <Loader2 className="w-4 h-4 animate-spin" /> {processStep || 'Analyzing...'}
                           </p>
                         </div>
                       )}
@@ -771,16 +765,16 @@ function DocumentVerification() {
                   {/* Scanning scanline graphic while processing */}
                   <AnimatePresence>
                     {isProcessing && (
-                      <motion.div 
+                      <motion.div
                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                         className="absolute inset-0 pointer-events-none overflow-hidden rounded-[2rem] z-0"
                       >
-                         <motion.div 
-                            className="w-full h-32 bg-gradient-to-b from-transparent via-blue-500/10 to-transparent border-b border-blue-500/20"
-                            initial={{ y: -150 }}
-                            animate={{ y: 500 }}
-                            transition={{ repeat: Infinity, duration: 2.5, ease: "linear" }}
-                         />
+                        <motion.div
+                          className="w-full h-32 bg-gradient-to-b from-transparent via-blue-500/10 to-transparent border-b border-blue-500/20"
+                          initial={{ y: -150 }}
+                          animate={{ y: 500 }}
+                          transition={{ repeat: Infinity, duration: 2.5, ease: "linear" }}
+                        />
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -791,10 +785,10 @@ function DocumentVerification() {
 
             {/* OCR Interactive Edit Form */}
             {extractedData && (
-              <motion.div 
+              <motion.div
                 key="ocr-edit"
-                initial={{ opacity: 0, y: 30, scale: 0.98 }} 
-                animate={{ opacity: 1, y: 0, scale: 1 }} 
+                initial={{ opacity: 0, y: 30, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="w-full bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-2xl shadow-blue-900/5 border border-white overflow-hidden relative"
               >
@@ -803,7 +797,7 @@ function DocumentVerification() {
 
                 <div className="bg-gradient-to-r from-slate-900 to-slate-800 p-8 flex flex-col sm:flex-row items-start sm:items-center gap-6 relative overflow-hidden">
                   <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-r from-transparent to-blue-500/20 opacity-50 block mix-blend-overlay" />
-                  
+
                   <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center flex-shrink-0 border border-white/20 shadow-inner">
                     <FileSearch className="w-8 h-8 text-blue-300" />
                   </div>
@@ -820,12 +814,12 @@ function DocumentVerification() {
                     <Edit3 className="w-4 h-4" /> Identity & Academic Meta
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                    {['name','prn_no','examination','branch','session','serial_no','sgpi','cgpi','remarks','date'].map(key => (
+                    {['name', 'prn_no', 'examination', 'branch', 'session', 'serial_no', 'sgpi', 'cgpi', 'remarks', 'date'].map(key => (
                       <div key={key} className="flex flex-col group/input">
                         <label className="text-[11px] font-bold uppercase text-slate-500 tracking-wider mb-2 ml-1 group-focus-within/input:text-blue-600 transition-colors">{key.replace('_', ' ')}</label>
-                        <input 
-                          type="text" 
-                          value={extractedData[key]} 
+                        <input
+                          type="text"
+                          value={extractedData[key]}
                           onChange={(e) => handleFieldChange(key, e.target.value)}
                           className="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:bg-white focus:outline-none transition-all font-semibold text-slate-800 shadow-sm"
                         />
@@ -838,9 +832,9 @@ function DocumentVerification() {
                   <button onClick={() => setExtractedData(null)} className="w-full sm:w-auto px-6 py-3 text-slate-600 font-semibold hover:bg-slate-100 rounded-xl transition flex justify-center">
                     Cancel & Restart
                   </button>
-                  <button 
-                    onClick={handleHashExtractedData} 
-                    disabled={isProcessing} 
+                  <button
+                    onClick={handleHashExtractedData}
+                    disabled={isProcessing}
                     className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3.5 rounded-xl font-bold hover:shadow-lg hover:shadow-blue-500/30 transition-all flex items-center justify-center gap-3 disabled:opacity-70 disabled:hover:scale-100 active:scale-95"
                   >
                     {isProcessing ? <><Loader2 className="w-5 h-5 animate-spin" /> Verifying On-Chain...</> : <><ShieldCheck className="w-5 h-5" /> Generate Hash & Verify</>}

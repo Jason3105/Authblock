@@ -338,7 +338,7 @@ export default function ScanPage() {
                         </div>
                         <h4 className="text-lg font-bold text-slate-900">{doc.examination}</h4>
                       </div>
-                      <div className="flex items-center gap-4 mt-4 md:mt-0">
+                      <div className="flex flex-wrap items-center gap-4 mt-4 md:mt-0">
                         <div className="text-center bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100">
                           <p className="text-[10px] uppercase font-bold text-slate-400">SGPI</p>
                           <p className="text-lg font-black text-slate-800">{doc.sgpi}</p>

@@ -144,18 +144,18 @@ export default async function DashboardPage() {
                 </div>
 
                 {/* Score Summary */}
-                <div className="px-6 py-6 grid grid-cols-3 gap-4">
+                <div className="px-6 py-6 grid grid-cols-1 sm:grid-cols-3 gap-y-6 sm:gap-4">
                   <div>
                     <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">Result</p>
                     <p className={`text-lg font-extrabold ${doc.remarks.toUpperCase().includes('PASS') || doc.remarks === 'SUCCESSFUL' ? 'text-emerald-600' : 'text-red-500'}`}>
                       {doc.remarks}
                     </p>
                   </div>
-                  <div className="border-l border-slate-100 pl-4">
+                  <div className="sm:border-l border-t sm:border-t-0 border-slate-100 pt-4 sm:pt-0 sm:pl-4">
                     <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">SGPI</p>
                     <p className="text-xl font-black text-slate-900 tracking-tighter">{doc.sgpi || 'N/A'}</p>
                   </div>
-                  <div className="border-l border-slate-100 pl-4">
+                  <div className="sm:border-l border-t sm:border-t-0 border-slate-100 pt-4 sm:pt-0 sm:pl-4">
                     <p className="text-[10px] uppercase font-bold text-slate-400 mb-1">CGPI</p>
                     <p className="text-xl font-black text-slate-900 tracking-tighter">{doc.cgpi || 'N/A'}</p>
                   </div>
@@ -164,7 +164,7 @@ export default async function DashboardPage() {
                 {/* Downloads & Verification Actions */}
                 <div className="px-6 py-5 bg-slate-50/50 border-t border-slate-100 flex flex-col gap-3">
                   {/* Download links */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                     <a 
                       href={doc.supabase_pdf_url} 
                       target="_blank" 

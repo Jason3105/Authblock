@@ -170,7 +170,7 @@ export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             </div>
 
             {/* Main Heading */}
-            <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold text-slate-900 leading-[1.1] mb-6 tracking-tight">
+            <h1 className="text-3xl sm:text-4xl lg:text-[3.5rem] font-bold text-slate-900 leading-[1.1] mb-6 tracking-tight">
               Secure your academic
               <br />
               credentials without
@@ -185,7 +185,7 @@ export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             </p>
 
             {/* CTA Buttons */}
-            <div className="flex flex-wrap gap-3 mb-10">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3 mb-10">
               <Link
                 href={isLoggedIn ? "/dashboard" : "/login"}
                 className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/25"
@@ -203,7 +203,7 @@ export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             </div>
 
             {/* Stats Banner */}
-            <div className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-sm font-medium">
+            <div className="flex flex-wrap items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-sm font-medium">
               <span className="text-emerald-400 font-bold">1,234</span>
               <span className="text-slate-300">certificates issued by</span>
               <span className="text-white font-bold">50+</span>
@@ -276,7 +276,7 @@ export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             </div>
 
             {/* ─── Credential Mini Cards (2×2) ─── */}
-            <div className="grid grid-cols-2 gap-3 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
               {credentials.map((cred) => (
                 <div key={cred.name} className="mini-chart-card">
                   <div className="flex items-center justify-between mb-2">

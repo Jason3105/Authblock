@@ -168,7 +168,7 @@ function ManageAdminsContent({ currentUser }: { currentUser: AdminRecord }) {
                     className="input font-medium"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="col-span-1">
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Phone No.</label>
                     <input
