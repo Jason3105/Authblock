@@ -57,19 +57,17 @@ export async function POST(request: Request) {
     const bytes32Hash = '0x' + hashMatch;
     let txHash = null;
 
-    // 4. Send hash to Blockchain
+    // 4. Send hash to Blockchain (fire-and-forget — do NOT await confirmation)
     try {
       console.log("Submitting scan hash to smart contract...");
       const { contract } = await getQRBlockchainContract();
       const tx = await contract.logScan(bytes32Hash);
-      console.log("Scan submitted! Waiting for confirmation...");
-      const receipt = await tx.wait();
-      txHash = receipt.hash;
-      console.log("Confirmed Transaction:", txHash);
+      // Grab the hash immediately after broadcast; mining continues in the background
+      txHash = tx.hash;
+      console.log("Scan tx broadcast (processing in background):", txHash);
     } catch (bcError) {
       console.error("Blockchain Logging Error:", bcError);
-      // We will continue even if blockchain logging fails to not break the app entirely,
-      // but in production we might want to fail or queue it.
+      // Continue even if blockchain logging fails — the scan record is still stored in DB.
     }
 
     // 5. Save to database qr_scans

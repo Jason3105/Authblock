@@ -128,11 +128,11 @@ export async function POST(req: Request) {
       const { contract } = await getBlockchainContract()
       console.log('[Blockchain] Registering marksheet coordinate data hash...')
       const txData = await contract.registerHash(marksheetDataHash)
-      const recData = await txData.wait()
-      tx_hash_data = recData.hash
-      console.log('[Blockchain] ✓ Marksheet data hash stored! TX:', tx_hash_data)
+      // Fire-and-forget: capture hash immediately, mining continues in background
+      tx_hash_data = txData.hash
+      console.log('[Blockchain] ✓ Marksheet data hash broadcast (processing in background)! TX:', tx_hash_data)
     } catch (e: any) {
-      console.error('[Blockchain] Failed to store marksheet data hash:', e)
+      console.error('[Blockchain] Failed to broadcast marksheet data hash:', e)
       throw new Error('Failed to register marksheet data hash: ' + e.message)
     }
 
@@ -144,11 +144,11 @@ export async function POST(req: Request) {
       const { contract } = await getBlockchainContract()
       console.log('[Blockchain] Registering marksheet PDF hash...')
       const txPdf = await contract.registerHash(marksheetPdfHash)
-      const recPdf = await txPdf.wait()
-      tx_hash_pdf = recPdf.hash
-      console.log('[Blockchain] ✓ Marksheet PDF hash stored! TX:', tx_hash_pdf)
+      // Fire-and-forget: capture hash immediately, mining continues in background
+      tx_hash_pdf = txPdf.hash
+      console.log('[Blockchain] ✓ Marksheet PDF hash broadcast (processing in background)! TX:', tx_hash_pdf)
     } catch (e: any) {
-      console.error('[Blockchain] Failed to store marksheet PDF hash:', e)
+      console.error('[Blockchain] Failed to broadcast marksheet PDF hash:', e)
       throw new Error('Failed to register marksheet PDF hash: ' + e.message)
     }
 
