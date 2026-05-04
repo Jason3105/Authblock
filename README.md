@@ -1,6 +1,17 @@
-# Authblock
+<div align="center">
+  <img src="public/logo.png" width="120" height="120" alt="Authblock Logo" />
+  <h1>Authblock</h1>
+  <p><b>Enterprise-grade decentralized academic credential verification system.</b></p>
+  
+  <p>
+    <img src="https://img.shields.io/badge/TE-Mini%20Project-blue?style=for-the-badge" alt="Project Type" />
+    <img src="https://img.shields.io/badge/Built%20For-Fr.%20CRCE%2C%20Bandra-orange?style=for-the-badge" alt="College" />
+  </p>
+</div>
 
-**Authblock** is an enterprise-grade decentralized application (dApp) designed to eliminate academic credential fraud. It provides a secure, end-to-end pipeline for generating, storing, and verifying academic marksheets using the Ethereum blockchain and AWS cloud infrastructure.
+---
+
+**Authblock** is an enterprise-grade decentralized application (dApp) designed to eliminate academic credential fraud. Built as a **TE Mini Project for Fr. Conceicao Rodrigues College of Engineering (Fr. CRCE), Bandra**, it provides a secure, end-to-end pipeline for generating, storing, and verifying academic marksheets using the Ethereum blockchain and AWS cloud infrastructure.
 
 ## 🌟 Key Features
 
@@ -10,7 +21,35 @@
 - **Event-Driven Notifications**: Leverages AWS SNS, SQS, and Lambda to asynchronously dispatch "Document Issued" emails via Amazon SES without blocking the main application flow.
 - **Admin & Student Portals**: Dedicated dashboards for administrators to upload and manage documents, and for students to view and verify their credentials.
 - **Multi-Factor Authentication (MFA)**: Secure access powered by Firebase Auth.
-- **OCR Verification (Optional)**: Includes endpoints for scanned document verification via OCR.space or Google Cloud Vision APIs.
+- **Advanced OCR Verification**: Includes robust OCR-based verification using `Tesseract.js` and external APIs for validating scanned physical marksheets.
+
+---
+
+## 📸 Screenshots
+
+### 🖥️ Landing Page
+![Home](public/home.png)
+
+### 🔑 Admin Dashboard & Management
+<div align="center">
+  <img src="public/admin.png" width="45%" alt="Admin Dashboard" />
+  <img src="public/access-management.png" width="45%" alt="Access Management" />
+</div>
+
+### 🎓 Student Profile & Credentials
+<div align="center">
+  <img src="public/profile.png" width="45%" alt="Student Profile" />
+  <img src="public/marksheet-issuance.png" width="45%" alt="Marksheet Issuance" />
+</div>
+
+### 🛡️ Verification Portal
+<div align="center">
+  <img src="public/verification.png" width="45%" alt="Verification" />
+  <img src="public/qr-scan.png" width="45%" alt="QR Scanner" />
+</div>
+
+### 📊 Network Stats & Activity
+![Network Stats](public/network-stats.png)
 
 ---
 
@@ -38,7 +77,9 @@ The system follows a strict pipeline to ensure that every document issued is bot
 - **UI Library**: [React 18](https://reactjs.org/)
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/)
 - **Web3 Integration**: [Wagmi](https://wagmi.sh/), [Viem](https://viem.sh/), [RainbowKit](https://www.rainbowkit.com/), [ethers.js](https://docs.ethers.org/)
-- **PDF Generation**: `jspdf`, `html2canvas`, `@react-pdf/renderer`
+- **PDF Generation/Parsing**: `jspdf`, `html2canvas`, `@react-pdf/renderer`, `pdf-lib`, `pdf-parse`
+- **OCR Engine**: `Tesseract.js`
+- **Animations**: `Framer Motion`
 - **Data Visualization**: `recharts`
 - **Icons**: `lucide-react`
 

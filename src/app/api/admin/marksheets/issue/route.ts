@@ -178,7 +178,7 @@ export async function POST(req: Request) {
     // Attach the marksheet hashes to certificate metadata
     certificateData.blockchain_hash = marksheetDataHash
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
     const verificationUrl = `${baseUrl}/verify?cert=${certificateData.certificate_id}&hash=${marksheetDataHash}&tx=${tx_hash_data}`
     const qrScanUrl       = `${baseUrl}/verify?cert=${certificateData.certificate_id}`
     certificateData.verification_url = verificationUrl

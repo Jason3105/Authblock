@@ -11,7 +11,8 @@ const SENDER = process.env.SES_SENDER_EMAIL || 'crce.10246.ceb@gmail.com'
 function buildEmailHtml(data) {
   const {
     studentName, prnNo, serialNo, examination, branch,
-    session, sgpi, cgpi, remarks, certificateId, issueDate
+    session, sgpi, cgpi, remarks, certificateId, issueDate,
+    verificationUrl, marksheetUrl, certificateUrl
   } = data
 
   const isPass = (remarks || '').toUpperCase().includes('PASS') || (remarks || '').toUpperCase().includes('SUCCESS')
@@ -155,6 +156,11 @@ function buildEmailHtml(data) {
                   This credential is immutably registered on the Ethereum Sepolia blockchain and can be independently verified against the on-chain hash at any time.
                 </div>
               </div>
+              <div style="margin-top:16px;display:flex;gap:12px;">
+                <a href="${verificationUrl}" style="background:#3b82f6;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:5px;font-size:12px;font-weight:600;text-align:center;display:inline-block;">Verify on Blockchain</a>
+                <a href="${marksheetUrl}" style="background:transparent;border:1px solid #475569;color:#e2e8f0;text-decoration:none;padding:10px 16px;border-radius:5px;font-size:12px;font-weight:600;text-align:center;display:inline-block;">Download Marksheet</a>
+                <a href="${certificateUrl}" style="background:transparent;border:1px solid #475569;color:#e2e8f0;text-decoration:none;padding:10px 16px;border-radius:5px;font-size:12px;font-weight:600;text-align:center;display:inline-block;">View Certificate</a>
+              </div>
             </div>
           </td>
         </tr>
@@ -228,7 +234,10 @@ ${data.certificateId}
 ${sep}
 
 This credential is registered on the Ethereum Sepolia blockchain.
-Log in to the Authblock student portal to download your marksheet and certificate.
+
+Verify Document: ${data.verificationUrl}
+Download Marksheet: ${data.marksheetUrl}
+View Certificate: ${data.certificateUrl}
 
 ─
 Fr. Conceicao Rodrigues College of Engineering

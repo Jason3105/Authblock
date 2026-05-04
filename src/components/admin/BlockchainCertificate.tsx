@@ -41,7 +41,8 @@ interface BlockchainCertificateProps {
 }
 
 export default function BlockchainCertificate({ data, showQR = true }: BlockchainCertificateProps) {
-  const verificationUrl = data.verification_url || `${window.location.origin}/verify?cert=${data.certificate_id}`
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000')
+  const verificationUrl = data.verification_url || `${baseUrl}/verify?cert=${data.certificate_id}`
 
   return (
     <div className="w-full max-w-full overflow-x-auto pb-4 custom-scrollbar-sm">
@@ -299,7 +300,7 @@ export default function BlockchainCertificate({ data, showQR = true }: Blockchai
                     display: 'inline-block',
                   }}
                 >
-                  <QRCode value={`${window.location.origin}/verify?cert=${data.certificate_id}`} size={110} level="L" />
+                  <QRCode value={`${baseUrl}/verify?cert=${data.certificate_id}`} size={110} level="L" />
                 </div>
                 <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '6px', fontWeight: 500 }}>
                   Scan to verify authenticity
@@ -325,7 +326,7 @@ export default function BlockchainCertificate({ data, showQR = true }: Blockchai
           This is a digitally signed blockchain certificate issued by Authblock.
         </p>
         <p style={{ fontSize: '11px', color: '#6b7280', fontFamily: 'monospace' }}>
-          {window.location.origin}/verify
+          {baseUrl}/verify
         </p>
       </div>
 

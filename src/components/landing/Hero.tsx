@@ -151,7 +151,7 @@ export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   return (
     <section
       ref={sectionRef}
-      className="relative min-h-screen flex items-center overflow-hidden pt-20 bg-white"
+      className="relative min-h-screen flex items-center overflow-hidden pt-20 pb-12 lg:pt-36 lg:pb-32 bg-white"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -160,57 +160,64 @@ export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
       <div className="absolute inset-0 bg-gradient-to-b from-white/80 via-transparent to-white/80" style={{ zIndex: 2 }} />
 
       <Container className="relative z-10">
-        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
+        <div className="grid lg:grid-cols-2 gap-16 lg:gap-24 items-center">
           {/* ─── Left Content ─── */}
-          <div className="max-w-xl pt-8">
+          <div className="max-w-2xl mx-auto lg:mx-0 text-center lg:text-left pt-6 lg:pt-0">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-50 border border-blue-200 rounded-full mb-8">
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-blue-50 border border-blue-200 rounded-full mb-6 lg:mb-10">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-              <span className="text-xs font-semibold text-blue-700 tracking-wide">Blockchain Verified on Ethereum</span>
+              <span className="text-xs font-semibold text-blue-700 tracking-wide uppercase">Blockchain Verified on Ethereum</span>
             </div>
 
             {/* Main Heading */}
-            <h1 className="text-3xl sm:text-4xl lg:text-[3.5rem] font-bold text-slate-900 leading-[1.1] mb-6 tracking-tight">
-              Secure your academic
-              <br />
-              credentials without
-              <br />
+            <h1 className="text-3xl sm:text-5xl lg:text-[4rem] font-extrabold text-slate-900 leading-[1.15] mb-6 lg:mb-8 tracking-tight text-balance">
+              Secure your academic{' '}
+              <br className="hidden sm:block" />
+              credentials without{' '}
+              <br className="hidden sm:block" />
               <span className="text-slate-900">the risk.</span>
             </h1>
 
             {/* Description */}
-            <p className="text-lg text-slate-600 mb-8 leading-relaxed max-w-md">
+            <p className="text-base sm:text-xl text-slate-600 mb-8 lg:mb-10 leading-relaxed max-w-xl mx-auto lg:mx-0 text-balance px-4 sm:px-0">
               Issue tamper-proof certificates. Pick a credential — degree, diploma, transcript.
               If it's verified, share it globally. If it's tampered, the blockchain catches it.
             </p>
 
             {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row flex-wrap gap-3 mb-10">
+            <div className="flex flex-col sm:flex-row flex-wrap justify-center lg:justify-start gap-3 lg:gap-4 mb-8 lg:mb-12 px-4 sm:px-0">
               <Link
                 href={isLoggedIn ? "/dashboard" : "/login"}
-                className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/25"
+                className="inline-flex items-center justify-center gap-2 px-6 lg:px-8 py-3.5 lg:py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all duration-300 hover:shadow-xl hover:shadow-blue-600/25 active:scale-95"
               >
-                <Image src="/logo.png" alt="" width={16} height={16} className="w-4 h-4" />
-                {isLoggedIn ? "Dashboard" : "Login"}
-                <ArrowRight className="w-4 h-4" />
+                <Image src="/logo.png" alt="" width={20} height={20} className="w-5 h-5" />
+                {isLoggedIn ? "Go to Dashboard" : "Get Started Now"}
+                <ArrowRight className="w-5 h-5" />
               </Link>
               <Link
                 href="/verify"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-white text-slate-700 font-semibold rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-all duration-200"
+                className="inline-flex items-center justify-center gap-2 px-6 lg:px-8 py-3.5 lg:py-4 bg-white text-slate-700 font-bold rounded-xl border border-slate-200 hover:border-blue-200 hover:bg-slate-50 transition-all duration-300 active:scale-95 shadow-sm hover:shadow-md"
               >
                 Verify Certificate
               </Link>
             </div>
 
             {/* Stats Banner */}
-            <div className="flex flex-wrap items-center gap-2 px-5 py-3 bg-slate-900 text-white rounded-xl text-sm font-medium">
-              <span className="text-emerald-400 font-bold">1,234</span>
-              <span className="text-slate-300">certificates issued by</span>
-              <span className="text-white font-bold">50+</span>
-              <span className="text-slate-300">institutions.</span>
-              <span className="text-slate-400 mx-1">|</span>
-              <span className="text-emerald-400 font-bold">$0 fraud</span>
-              <span className="text-slate-300">— ever.</span>
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-x-4 gap-y-2 px-6 py-4 bg-slate-900 text-white rounded-2xl text-[13px] sm:text-sm font-medium shadow-xl shadow-slate-900/10 mx-4 sm:mx-0">
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="text-emerald-400 font-bold">1,234</span>
+                <span className="text-slate-300">certificates issued</span>
+              </div>
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="text-slate-300">by</span>
+                <span className="text-white font-bold">50+</span>
+                <span className="text-slate-300">institutions</span>
+              </div>
+              <span className="text-slate-500 hidden lg:inline">|</span>
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className="text-emerald-400 font-bold">$0 fraud</span>
+                <span className="text-slate-300">— ever.</span>
+              </div>
             </div>
           </div>
 
@@ -276,7 +283,7 @@ export function Hero({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
             </div>
 
             {/* ─── Credential Mini Cards (2×2) ─── */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
               {credentials.map((cred) => (
                 <div key={cred.name} className="mini-chart-card">
                   <div className="flex items-center justify-between mb-2">
