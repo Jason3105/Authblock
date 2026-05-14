@@ -1,0 +1,62 @@
+// ── Modern Flutter app-level build.gradle ──────────────────────────────────
+// Uses the pluginManagement pattern (Flutter 3.10+).
+// No manual localProperties parsing needed — flutter.gradle handles it.
+
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.gms.google-services"
+}
+
+android {
+    namespace "com.authblock.authblock_mobile"
+    compileSdk flutter.compileSdkVersion
+    ndkVersion flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    defaultConfig {
+        applicationId "com.authblock.authblock_mobile"
+        minSdkVersion flutter.minSdkVersion
+        targetSdk flutter.targetSdkVersion
+        versionCode flutter.versionCode
+        versionName flutter.versionName
+        multiDexEnabled true
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+}
+
+flutter {
+    source "../.."
+}
+
+dependencies {
+    // Kotlin stdlib
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.22"
+
+    // Firebase BoM (manages all Firebase library versions)
+    implementation platform("com.google.firebase:firebase-bom:32.7.4")
+    implementation "com.google.firebase:firebase-analytics-ktx"
+    implementation "com.google.firebase:firebase-auth-ktx"
+
+    // Google Sign-In
+    implementation "com.google.android.gms:play-services-auth:21.0.0"
+
+    // MultiDex support
+    implementation "androidx.multidex:multidex:2.0.1"
+}

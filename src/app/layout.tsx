@@ -16,7 +16,13 @@ export const metadata: Metadata = {
     title: 'Authblock - Blockchain Certificate Verification',
     description: 'Secure, tamper-proof academic credential verification powered by blockchain technology.',
     type: 'website',
-    images: ['/logo.png'],
+    images: ['/home.png'],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Authblock - Blockchain Certificate Verification',
+    description: 'Secure, tamper-proof academic credential verification powered by blockchain technology.',
+    images: ['/home.png'],
   },
 }
 

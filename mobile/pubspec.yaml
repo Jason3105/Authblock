@@ -1,0 +1,55 @@
+name: authblock_mobile
+description: Authblock blockchain academic credential verification app.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP & Networking
+  http: ^1.2.1
+  cookie_jar: ^4.0.8
+  dio: ^5.4.3
+  dio_cookie_manager: ^3.1.1
+
+  # State Management
+  provider: ^6.1.2
+
+  # Local Storage
+  shared_preferences: ^2.2.3
+
+  # QR Code
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.1.1
+
+  # Firebase (Admin Google Sign-In)
+  firebase_core: ^3.1.0
+  firebase_auth: ^5.1.0
+  google_sign_in: ^6.2.1
+
+  # UI & Navigation
+  google_fonts: ^6.2.1
+  flutter_animate: ^4.5.0
+  go_router: ^13.2.1
+  url_launcher: ^6.3.0
+  shimmer: ^3.0.0
+  cached_network_image: ^3.3.1
+
+  # Utils
+  intl: ^0.19.0
+  flutter_svg: ^2.0.10+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
