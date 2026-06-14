@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { sql } from '@/lib/db'
-import { cookies } from 'next/headers'
 
 export async function POST(req: Request) {
   try {
@@ -47,22 +46,23 @@ export async function POST(req: Request) {
       }, { status: 401 })
     }
 
-    const result = [matchedUser]
+    const user = matchedUser
+    const sessionValue = JSON.stringify({ prn_no: user.prn_no, full_name: user.full_name })
+    const isProduction = process.env.NODE_ENV === 'production'
 
-    const user = result[0]
-
-    // Set secure HTTP-only cookie using Next.js native cookies
-    cookies().set({
+    // Set cookie via NextResponse — compatible with Amplify Lambda
+    const response = NextResponse.json({ success: true, user })
+    response.cookies.set({
       name: 'student_session',
-      value: JSON.stringify({ prn_no: user.prn_no, full_name: user.full_name }),
+      value: sessionValue,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isProduction,
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 7 // 1 week session
+      maxAge: 60 * 60 * 24 * 7, // 1 week
     })
 
-    return NextResponse.json({ success: true, user })
+    return response
   } catch (error: any) {
     console.error('[Login API Error]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
