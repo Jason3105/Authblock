@@ -1,0 +1,27 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: .next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - .next/cache/**/*
+  customHeaders:
+    # Firebase signInWithPopup requires cross-origin popup communication.
+    # Amplify sets COOP: same-origin by default which blocks window.opener.
+    # Setting to unsafe-none restores the behaviour needed for Firebase Auth popups.
+    - pattern: '**/*'
+      headers:
+        - key: Cross-Origin-Opener-Policy
+          value: unsafe-none
+        - key: Cross-Origin-Embedder-Policy
+          value: unsafe-none
