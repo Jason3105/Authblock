@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { sql } from '@/lib/db'
 import { getBlockchainContract } from '@/lib/blockchain'
 
+// ethers.js and Node.js crypto are not available in the Edge runtime.
+export const runtime = 'nodejs'
+
 export async function POST(req: Request) {
   try {
     const { hash } = await req.json()

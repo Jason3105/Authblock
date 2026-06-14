@@ -27,7 +27,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Admin not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, admin: rows[0] })
+    const response = NextResponse.json({ success: true, admin: rows[0] })
+    // Set a server-side session cookie so middleware.ts can guard /admin/** routes.
+    // Value is the admin email (lowercase). HttpOnly prevents JS access.
+    response.cookies.set({
+      name: 'admin_session',
+      value: email.toLowerCase().trim(),
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7, // 1 week
+    })
+
+    return response
   } catch (err) {
     console.error('[link-firebase] Error:', err)
     return NextResponse.json({ error: 'Server error' }, { status: 500 })

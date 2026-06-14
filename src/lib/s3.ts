@@ -1,15 +1,37 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 
-const region = process.env.S3_REGION!
-const bucketName = process.env.S3_BUCKET_NAME!
+/**
+ * Create an S3 client lazily inside each call so that missing environment
+ * variables only crash the routes that actually need S3, not every Lambda
+ * that happens to import this module at cold-start time.
+ */
+function getS3Client(): S3Client {
+  const region = process.env.S3_REGION
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY
 
-const s3Client = new S3Client({
-  region,
-  credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY!,
-  },
-})
+  if (!region || !accessKeyId || !secretAccessKey) {
+    throw new Error(
+      '[s3] Missing S3 credentials. Set S3_REGION, S3_ACCESS_KEY_ID, and S3_SECRET_ACCESS_KEY ' +
+        'in Amplify App Settings → Environment Variables.'
+    )
+  }
+
+  return new S3Client({
+    region,
+    credentials: { accessKeyId, secretAccessKey },
+  })
+}
+
+function getBucketName(): string {
+  const bucket = process.env.S3_BUCKET_NAME
+  if (!bucket) {
+    throw new Error(
+      '[s3] S3_BUCKET_NAME is not set. Add it to Amplify App Settings → Environment Variables.'
+    )
+  }
+  return bucket
+}
 
 /**
  * Uploads a file buffer to AWS S3 and returns its public URL.
@@ -22,6 +44,10 @@ export async function uploadToS3(
   body: Uint8Array | Buffer,
   contentType: string
 ): Promise<string> {
+  const s3Client = getS3Client()
+  const bucketName = getBucketName()
+  const region = process.env.S3_REGION!
+
   const cmd = new PutObjectCommand({
     Bucket: bucketName,
     Key: key,
@@ -32,6 +58,5 @@ export async function uploadToS3(
   await s3Client.send(cmd)
 
   // Standard S3 virtual-hosted-style public URL
-  const url = `https://${bucketName}.s3.${region}.amazonaws.com/${key}`
-  return url
+  return `https://${bucketName}.s3.${region}.amazonaws.com/${key}`
 }

@@ -51,6 +51,11 @@ export default function AdminLoginPage() {
         })
         const data = await res.json()
 
+        /* Server error — don't show "Access Denied", surface the real problem */
+        if (!res.ok) {
+          throw new Error(`Server error (${res.status}): ${data.error ?? 'Unknown error'}. Check Amplify environment variables.`)
+        }
+
         if (!data.allowed) {
           /* Not whitelisted — delete the Firebase user entirely so it never
              appears in the Firebase Console, then sign out locally. */

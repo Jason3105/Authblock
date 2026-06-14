@@ -4,6 +4,9 @@ import { getQRBlockchainContract } from '@/lib/blockchain';
 import { ethers } from 'ethers';
 import crypto from 'crypto';
 
+// ethers.js and Node.js crypto require the Node.js runtime.
+export const runtime = 'nodejs';
+
 export async function POST(request: Request) {
   try {
     const { qr_token } = await request.json();

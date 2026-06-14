@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Jimp } from 'jimp'
 import { createWorker, PSM } from 'tesseract.js'
 
+// Jimp, Tesseract.js, and Buffer require the Node.js runtime.
+export const runtime = 'nodejs'
+
 // OCR.space API - Free tier: 25,000 requests/month, 1MB file limit
 const OCR_SPACE_API_KEY = process.env.OCR_SPACE_API_KEY || ''
 
