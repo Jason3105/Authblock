@@ -3,14 +3,15 @@ frontend:
   phases:
     preBuild:
       commands:
-        # Pin Node.js to v20 (LTS) — avoids build failures caused by Amplify's
-        # default Node version changing between builds, especially with ESM
-        # ("type": "module" in package.json requires Node 18+).
+        # Pin Node.js to v20 (LTS)
         - nvm use 20 || nvm install 20
         - node --version
         - npm ci
     build:
       commands:
+        - nvm use 20
+        # Write environment variables to .env.production for Next.js to use at build-time
+        - env | grep -e NEXT_PUBLIC_ -e DATABASE_URL -e ALCHEMY_RPC_URL -e S3_ -e SMTP_ -e OCR_SPACE -e GOOGLE_VISION >> .env.production
         - npm run build
   artifacts:
     baseDirectory: .next
